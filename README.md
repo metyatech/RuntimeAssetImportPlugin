@@ -3,9 +3,11 @@
 This is a plugin for the Unreal Engine to load 3D assets (e.g. FBX) at runtime. Made with UE5.4.2.
 
 ## Prerequisites
-- Windows is the primary supported platform. macOS and Linux support is experimental (build scripts are present but not officially tested).
+- Windows is the primary supported platform. macOS (arm64 only; x86_64 not supported) and Linux support is experimental.
 - Download and install [CMake](https://cmake.org/)
   The check box "Add CMake to the PATH environment variable" that appears during installation must be checked.
+
+> **Note:** The first build of the assimp library (a C++ dependency) takes approximately 5 or more minutes. Subsequent builds are fast. This is expected behavior.
 
 ## How to install
 Clone this repository with its submodules into the Plugins folder (or create your own if you don't have one) in the folder of the Unreal Engine project where you want to install this plugin by doing one of the following:
@@ -25,7 +27,7 @@ Clone this repository with its submodules into the Plugins folder (or create you
 2. In the Plugins folder of the project where you want to install this plug-in, start a command prompt.
 3. Execute  
    ```
-   git clone --recursive URL`
+   git clone --recursive URL
    ```
    Put the URL of this repository in the URL field.
 </details>
@@ -42,6 +44,30 @@ The following file formats are supported via assimp:
 - OBJ
 - DAE (Collada)
 - Other formats supported by assimp
+
+## Content Folder Assets
+
+The plugin's `Content` folder includes the following assets:
+
+- **`AssetImporterMeshMaterial.uasset`** — Parent material used by the plugin. Exposes the following parameters:
+  - `TextureBlendIntensityForBaseColor` — blend intensity between texture and base color
+  - `BaseColor4` — base color as a 4-component vector
+  - `BaseColorTexture` — texture input for base color
+- **`purple.uasset`** — Sample purple texture for testing and demonstration purposes.
+
+## Known Bugs
+
+- **Multiplayer (ProceduralMesh):** Clients may experience abnormal movement accompanied by a `LogNetPackageMap` warning. Use `DynamicMeshComponent` instead as a workaround.
+- **Packaged game materials (StaticMesh):** Materials display as a checkerboard pattern in packaged builds. Use `DynamicMeshComponent` instead as a workaround.
+
+## Running Tests
+
+To run from the command line:
+```
+UnrealEditor.exe <YourProject>.uproject -ExecCmds="Automation RunTests RuntimeAssetImport" -unattended -nopause -log -testexit="Automation Test Queue Empty"
+```
+
+Or from the UE Editor UI: **Window > Test Automation**, search `RuntimeAssetImport`, click **Start Tests**.
 
 ## Known Limitations
 - Only embedded textures are loaded (external texture file references are not yet supported)

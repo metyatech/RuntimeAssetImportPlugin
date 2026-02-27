@@ -156,6 +156,9 @@ static const aiScene* LoadAiScene(Assimp::Importer& AiImporter,
 
 static const aiScene* LoadAiScene(Assimp::Importer&    AiImporter,
                                   const TArray<uint8>& AssetData) {
+	if (AssetData.IsEmpty()) {
+		return nullptr;
+	}
 	// import
 	return AiImporter.ReadFileFromMemory(&AssetData[0], AssetData.Num(),
 	                                     AiImportFlags);

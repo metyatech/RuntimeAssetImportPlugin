@@ -3,8 +3,8 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "RuntimeAssetImport",
-	"Description": "Plugin to load mesh at runtime.",
-	"Category": "Other",
+	"Description": "Runtime mesh loading plugin for Unreal Engine 5. Supports FBX, glTF/GLB, OBJ, DAE and other formats via the Assimp library.",
+	"Category": "Mesh",
 	"EngineVersion": "5.4.0",
 	"CreatedBy": "Udon-Tobira",
 	"CreatedByURL": "https://github.com/metyatech",
@@ -29,6 +29,11 @@
 			"Name": "RuntimeAssetImport",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "RuntimeAssetImportTest",
+			"Type": "Developer",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [

@@ -100,8 +100,8 @@ UProceduralMeshComponent*
 	if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult) {
 		ConstructProceduralMeshComponentFromAssetFileResult =
 		    EConstructProceduralMeshComponentFromAssetFileResult::Failure;
+		return nullptr;
 	}
-	check(ELoadMeshFromAssetFileResult::Success == LoadMeshFromAssetFileResult);
 
 	// assume the result is success
 	ConstructProceduralMeshComponentFromAssetFileResult =
@@ -135,8 +135,8 @@ UStaticMeshComponent*
 	if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult) {
 		ConstructStaticMeshComponentFromAssetFileResult =
 		    EConstructStaticMeshComponentFromAssetFileResult::Failure;
+		return nullptr;
 	}
-	check(ELoadMeshFromAssetFileResult::Success == LoadMeshFromAssetFileResult);
 
 	// assume the result is success
 	ConstructStaticMeshComponentFromAssetFileResult =
@@ -170,8 +170,8 @@ UDynamicMeshComponent*
 	if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult) {
 		ConstructDynamicMeshComponentFromAssetFileResult =
 		    EConstructDynamicMeshComponentFromAssetFileResult::Failure;
+		return nullptr;
 	}
-	check(ELoadMeshFromAssetFileResult::Success == LoadMeshFromAssetFileResult);
 
 	// assume the result is success
 	ConstructDynamicMeshComponentFromAssetFileResult =
