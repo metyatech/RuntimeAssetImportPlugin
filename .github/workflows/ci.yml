@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: RuntimeAssetImportPlugin
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Checkout test host project
+        uses: actions/checkout@v4
+        with:
+          repository: metyatech/RuntimeAssetImportSample
+          path: RuntimeAssetImportSample
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Link plugin into test project
+        shell: powershell
+        run: |
+          $pluginPath = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportPlugin"
+          $linkPath   = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportSample\Plugins\RuntimeAssetImport"
+          if (Test-Path $linkPath) {
+            Remove-Item -Recurse -Force $linkPath
+          }
+          New-Item -ItemType Junction -Path $linkPath -Target $pluginPath
+          Write-Host "Linked: $linkPath -> $pluginPath"
+
+      - name: Verify (build + test)
+        shell: powershell
+        working-directory: RuntimeAssetImportSample
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Verify.ps1 -TestFilter "RuntimeAssetImport"

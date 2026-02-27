@@ -1,0 +1,7 @@
+{
+  "source": "github:metyatech/agent-rules",
+  "domains": [
+    "unreal"
+  ],
+  "output": "AGENTS.md"
+}
