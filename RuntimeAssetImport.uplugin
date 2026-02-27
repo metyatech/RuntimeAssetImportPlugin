@@ -6,7 +6,7 @@
 	"Description": "Runtime mesh loading plugin for Unreal Engine 5. Supports FBX, glTF/GLB, OBJ, DAE and other formats via the Assimp library.",
 	"Category": "Mesh",
 	"EngineVersion": "5.4.0",
-	"CreatedBy": "Udon-Tobira",
+	"CreatedBy": "metyatech",
 	"CreatedByURL": "https://github.com/metyatech",
 	"DocsURL": "https://github.com/metyatech/RuntimeAssetImportPlugin#readme",
 	"MarketplaceURL": "",
