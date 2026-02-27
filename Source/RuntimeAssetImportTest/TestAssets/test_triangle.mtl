@@ -1,0 +1,3 @@
+# Material file for test_triangle.obj
+newmtl TestMaterial
+Kd 0.8 0.4 0.2
