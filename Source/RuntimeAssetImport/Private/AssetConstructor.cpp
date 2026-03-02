@@ -1,10 +1,13 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright (c) 2026 metyatech. All rights reserved.
 
 #include "AssetConstructor.h"
 
+#include "HasFeatureDef.h"
 #include "AssetConstructorHelpers.h"
 #include "AssetLoader.h"
 #include "CreateMeshFromMeshDataOnProceduralMeshComponentLatentAction.h"
+#include "Engine/Engine.h"
+#include "Engine/LatentActionManager.h"
 
 void UAssetConstructor::CreateMeshFromMeshDataOnProceduralMeshComponent(
     const UObject* WorldContextObject, FLatentActionInfo LatentActionInfo,

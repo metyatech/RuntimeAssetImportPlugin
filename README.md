@@ -2,37 +2,32 @@
 ## Overview
 This is a plugin for the Unreal Engine to load 3D assets (e.g. FBX) at runtime. Made with UE5.4.2.
 
-## Prerequisites
-- Windows is the primary supported platform. macOS (arm64 only; x86_64 not supported) and Linux support is experimental.
-- Download and install [CMake](https://cmake.org/)
-  The check box "Add CMake to the PATH environment variable" that appears during installation must be checked.
+## Recommended approach: DynamicMesh (stable)
 
-> **Note:** The first build of the assimp library (a C++ dependency) takes approximately 5 or more minutes. Subsequent builds are fast. This is expected behavior.
+**Use the `DynamicMesh` path for all builds.** The `ConstructDynamicMeshComponentFromAssetFile` and `ConstructDynamicMeshComponentFromMeshData` Blueprint functions are the stable, recommended methods that work correctly in both editor and packaged builds.
+
+> **StaticMesh functions are [Experimental].** `ConstructStaticMeshComponentFromAssetFile` and related StaticMesh functions have a known limitation in packaged builds (no editor): **materials display as a checkerboard pattern**. Avoid using them unless you understand and accept this limitation.
+
+## Prerequisites
+- Windows (Win64) is the primary supported platform.
 
 ## How to install
-Clone this repository with its submodules into the Plugins folder (or create your own if you don't have one) in the folder of the Unreal Engine project where you want to install this plugin by doing one of the following:
-<details>
-<summary>Installation method 1 (using Github Desktop) (easy)</summary>
 
-1. Launch "Github Desktop" application (if not available, install it first).
-2. From the menu, select File > Clone repository...
-3. Go to the URL tab.
-4. Enter the URL of this Github repository in "URL or username/repository", select the Plugins folder of the project where you want to install this plugin in "Local path", and press Clone.
-</details>
+1. Copy (or clone) this plugin folder into the `Plugins/` folder of your Unreal Engine project. Create the `Plugins/` folder if it does not exist.
+2. Open your project. When prompted "The following modules are missing or built with a different engine version: RuntimeAssetImport", press **Yes** to build.
+3. The plugin is now enabled and ready to use.
+
+> **Note:** Win64 prebuilt binaries for assimp are included. No CMake or manual build step is required.
 
 <details>
-<summary>Installation method 2 (using git command) (advanced)</summary>
+<summary>Alternative: clone with Git</summary>
 
-1. If git is not installed, please install it.
-2. In the Plugins folder of the project where you want to install this plug-in, start a command prompt.
-3. Execute  
-   ```
-   git clone --recursive URL
-   ```
-   Put the URL of this repository in the URL field.
+In the `Plugins/` folder of your project, run:
+```
+git clone <URL of this repository>
+```
+Then open the project and press **Yes** when prompted to build.
 </details>
-
-After installing the plugin using one of the above procedures, open the project (Press Yes when you see "The following modules are missing or built with a different engine version: RuntimeAssetImport") and the plugin is enabled.
 
 ## How to use
 Run [Runtime Asset Import Sample](https://github.com/Udon-Tobira/RuntimeAssImpSample).
@@ -58,7 +53,7 @@ The plugin's `Content` folder includes the following assets:
 ## Known Bugs
 
 - **Multiplayer (ProceduralMesh):** Clients may experience abnormal movement accompanied by a `LogNetPackageMap` warning. Use `DynamicMeshComponent` instead as a workaround.
-- **Packaged game materials (StaticMesh):** Materials display as a checkerboard pattern in packaged builds. Use `DynamicMeshComponent` instead as a workaround.
+- **Packaged game materials (StaticMesh — Experimental):** Materials display as a checkerboard pattern in packaged builds. Use `DynamicMeshComponent` instead as a workaround.
 
 ## Running Tests
 
@@ -76,5 +71,4 @@ Or from the UE Editor UI: **Window > Test Automation**, search `RuntimeAssetImpo
 - Only 1 vertex color channel is supported
 
 ## Description of the technology inside
-We are using assimp as a git submodule, CMake is only needed to build assimp. The actual loading of the asset files is done by assimp, and this plugin only converts them from the format loaded by assimp to a format usable by the Unreal Engine. The build of assimp is done automatically during the project build process.
-
+We are using assimp for loading 3D asset files. Prebuilt Win64 binaries (`assimp-vc143-mt.dll` / `.lib`) are bundled under `Source/ThirdParty/assimp/Bin/Win64` and `Lib/Win64`. This plugin converts the data loaded by assimp into a format usable by Unreal Engine.

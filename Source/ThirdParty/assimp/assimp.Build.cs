@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright (c) 2026 metyatech. All rights reserved.
 
 using System.IO;
 using UnrealBuildTool;
@@ -8,56 +8,24 @@ public class assimp : ModuleRules
     public assimp(ReadOnlyTargetRules Target) : base(Target)
     {
         Type = ModuleType.External;
+        bEnableUndefinedIdentifierWarnings = false;
 
-        // get assimp directory path
-        var assimpDirectoryPath = Path.Combine(ModuleDirectory, "assimp");
-
-        // get assimp include directory path
-        var assimpIncludeDirectoryPath = Path.Combine(assimpDirectoryPath, "include");
-
-        // get assimp lib directory path
-        var assimpLibDirectoryPath = Path.Combine(assimpDirectoryPath, "lib");
-
-        // get assimp bin directory path
-        var assimpBinDirectoryPath = Path.Combine(assimpDirectoryPath, "bin");
-
-        PublicSystemIncludePaths.Add(assimpIncludeDirectoryPath);
+        // Add the include directory (prebuilt headers)
+        PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "Include"));
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            var assimpDllFilePath = Path.Combine(assimpBinDirectoryPath, "Release", "*.dll");
+            var libPath = Path.Combine(ModuleDirectory, "Lib", "Win64", "assimp-vc143-mt.lib");
+            var dllPath = Path.Combine(ModuleDirectory, "Bin", "Win64", "assimp-vc143-mt.dll");
 
             // Add the import library
-            PublicAdditionalLibraries.Add(Path.Combine(assimpLibDirectoryPath, "Release", "*.lib"));
+            PublicAdditionalLibraries.Add(libPath);
 
             // Delay-load the DLL, so we can load it from the right place first
-            PublicDelayLoadDLLs.Add(Path.Combine(assimpDllFilePath));
+            PublicDelayLoadDLLs.Add(dllPath);
 
             // Ensure that the DLL is staged along with the executable
-            RuntimeDependencies.Add("$(BinaryOutputDir)", assimpDllFilePath);
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Mac)
-        {
-            var assimpDylibFilePath = Path.Combine(assimpBinDirectoryPath, "libassimp.dylib");
-
-            // Delay-load the DLL, so we can load it from the right place first
-            PublicDelayLoadDLLs.Add(Path.Combine(assimpDylibFilePath));
-
-            // Ensure that the DLL is staged along with the executable
-            RuntimeDependencies.Add(assimpDylibFilePath);
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Android)
-        {
-            // Add the import library
-            PublicAdditionalLibraries.Add(Path.Combine(assimpBinDirectoryPath, "arm64-v8a", "*.so"));
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Linux)
-        {
-            string LibAssimpSoPath = Path.Combine(assimpBinDirectoryPath, "*.so");
-
-            PublicAdditionalLibraries.Add(LibAssimpSoPath);
-            PublicDelayLoadDLLs.Add(LibAssimpSoPath);
-            RuntimeDependencies.Add(LibAssimpSoPath);
+            RuntimeDependencies.Add("$(BinaryOutputDir)", dllPath);
         }
     }
 }

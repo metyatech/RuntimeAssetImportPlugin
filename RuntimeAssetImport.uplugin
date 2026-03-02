@@ -15,25 +15,11 @@
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
-	"PreBuildSteps": {
-		"Win64": [
-			"\"$(PluginDir)\\PreBuild.bat\""
-		],
-		"Mac": [
-			"chmod +x \"$(PluginDir)/PreBuild.sh\"",
-			"\"$(PluginDir)/PreBuild.sh\""
-		]
-	},
 	"Modules": [
 		{
 			"Name": "RuntimeAssetImport",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
-		},
-		{
-			"Name": "RuntimeAssetImportTest",
-			"Type": "Developer",
-			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [

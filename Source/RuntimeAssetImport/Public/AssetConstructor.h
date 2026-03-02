@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright (c) 2026 metyatech. All rights reserved.
 
 #pragma once
 
@@ -105,7 +105,11 @@ public:
 	        bool ShouldRegisterComponentToOwner = true);
 
 	/**
-	 * Construct structured Static Mesh Component from the mesh data.
+	 * [Experimental] Construct structured Static Mesh Component from the mesh
+	 * data.
+	 * WARNING: In packaged builds (no editor), materials display as a
+	 * checkerboard pattern. Use ConstructDynamicMeshComponentFromMeshData
+	 * (stable, recommended) instead unless you have a specific reason.
 	 * @param   MeshData                    mesh data
 	 * @param   ParentMaterialInterface     The base material interface used to
 	 *                                      create materials for the constructed
@@ -117,13 +121,12 @@ public:
 	 *                                            to Owner. Must be turned ON to
 	 *                                            be reflected in the scene.
 	 * @return  the root of the constructed Static Mesh Components.
-	 * @details  If you have no particular preference, use the
-	 *           ConstructDynamicMeshComponentFromMeshData function (Not
-	 *           implemented yet, but will be).
-	 *           In the absence of an editor, such as a packaged game, the
+	 * @details  In the absence of an editor, such as a packaged game, the
 	 *           material disappears and a checkerboard appears.
 	 */
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable,
+	          meta = (Category = "RuntimeAssetImport|Experimental",
+	                  ToolTip = "[Experimental] Construct Static Mesh Component from mesh data. WARNING: materials show as checkerboard in packaged builds. Prefer ConstructDynamicMeshComponentFromMeshData."))
 	static UPARAM(DisplayName = "Root Static Mesh Component")
 	    UStaticMeshComponent* ConstructStaticMeshComponentFromMeshData(
 	        const FLoadedMeshData& MeshData,
@@ -192,8 +195,11 @@ public:
 	        bool ShouldRegisterComponentToOwner = true);
 
 	/**
-	 * Construct structured Static Mesh Component from the specified asset
-	 * file. The file format must be one supported by assimp.
+	 * [Experimental] Construct structured Static Mesh Component from the
+	 * specified asset file. The file format must be one supported by assimp.
+	 * WARNING: In packaged builds (no editor), materials display as a
+	 * checkerboard pattern. Use ConstructDynamicMeshComponentFromAssetFile
+	 * (stable, recommended) instead unless you have a specific reason.
 	 * @param   FilePath                    Path to the asset file.
 	 * @param   ParentMaterialInterface     The base material interface used to
 	 *                                      create materials for the constructed
@@ -211,14 +217,14 @@ public:
 	 *          ConstructStaticMeshComponentFromAssetFileResult.
 	 *          If the result is Success, the return value is valid,
 	 *          If the result is Failure, the return value is nullptr.
-	 * @details  If you have no particular preference, use the
-	 *           ConstructDynamicMeshComponentFromAssetFile function.
-	 *           In the absence of an editor, such as a packaged game, the
+	 * @details  In the absence of an editor, such as a packaged game, the
 	 *           material disappears and a checkerboard appears.
 	 */
 	UFUNCTION(BlueprintCallable,
 	          meta = (ExpandEnumAsExecs =
-	                      "ConstructStaticMeshComponentFromAssetFileResult"))
+	                      "ConstructStaticMeshComponentFromAssetFileResult",
+	                  Category = "RuntimeAssetImport|Experimental",
+	                  ToolTip = "[Experimental] Construct Static Mesh Component from asset file. WARNING: materials show as checkerboard in packaged builds. Prefer ConstructDynamicMeshComponentFromAssetFile."))
 	static UPARAM(DisplayName = "Root Static Mesh Component")
 	    UStaticMeshComponent* ConstructStaticMeshComponentFromAssetFile(
 	        const FString& FilePath, UMaterialInterface* ParentMaterialInterface,

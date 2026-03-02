@@ -1,5 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+using System.IO;
 using UnrealBuildTool;
 
 public class RuntimeAssetImport : ModuleRules
@@ -33,6 +34,9 @@ public class RuntimeAssetImport : ModuleRules
                 "MeshConversion",
             }
             );
+
+        bEnableUndefinedIdentifierWarnings = false;
+        bUseRTTI = true;
 
 
         PrivateDependencyModuleNames.AddRange(
