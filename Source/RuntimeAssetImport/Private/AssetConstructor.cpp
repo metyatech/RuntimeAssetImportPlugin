@@ -2,7 +2,7 @@
 
 #include "AssetConstructor.h"
 
-#include "HasFeatureDef.h"
+#include "HasFeatureFix.h"
 #include "AssetConstructorHelpers.h"
 #include "AssetLoader.h"
 #include "CreateMeshFromMeshDataOnProceduralMeshComponentLatentAction.h"

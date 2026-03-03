@@ -2,7 +2,7 @@
 
 #include "AssetLoader.h"
 
-#include "HasFeatureDef.h"
+#include "HasFeatureFix.h"
 #include "HAL/Platform.h"
 #include "ImageUtils.h"
 #include "LogAssetLoader.h"

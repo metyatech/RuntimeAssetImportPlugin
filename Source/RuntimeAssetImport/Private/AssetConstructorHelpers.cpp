@@ -2,7 +2,7 @@
 
 #include "AssetConstructorHelpers.h"
 
-#include "HasFeatureDef.h"
+#include "HasFeatureFix.h"
 #include "ImageUtils.h"
 #include "LogAssetConstructor.h"
 #include "Materials/MaterialInstanceDynamic.h"
