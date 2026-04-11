@@ -64,6 +64,17 @@ UnrealEditor.exe <YourProject>.uproject -ExecCmds="Automation RunTests RuntimeAs
 
 Or from the UE Editor UI: **Window > Test Automation**, search `RuntimeAssetImport`, click **Start Tests**.
 
+## Packaging for Marketplace
+
+To create a submission package for Fab / Unreal Engine Marketplace, run:
+
+```powershell
+powershell -File .\PackageForMarketplace.ps1
+```
+
+This creates a staging directory under `PackedForMarketplace/` and a zip archive named
+`RuntimeAssetImport_Marketplace.zip`. Both outputs are generated artifacts and are ignored by Git.
+
 ## Known Limitations
 - Only embedded textures are loaded (external texture file references are not yet supported)
 - Only 1 texture per material is supported
