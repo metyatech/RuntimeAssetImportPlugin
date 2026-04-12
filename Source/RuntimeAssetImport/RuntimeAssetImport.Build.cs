@@ -37,6 +37,7 @@ public class RuntimeAssetImport : ModuleRules
 
         bEnableUndefinedIdentifierWarnings = false;
         bUseRTTI = true;
+        PublicDefinitions.Add("__has_feature(x)=0");
 
 
         PrivateDependencyModuleNames.AddRange(

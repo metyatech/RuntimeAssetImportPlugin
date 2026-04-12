@@ -10,28 +10,27 @@
  * Internal class for
  * AssetConstructor::CreateMeshFromMeshDataOnProceduralMeshComponent
  */
-class FCreateMeshFromMeshDataOnProceduralMeshComponentLatentAction
-    : public FPendingLatentAction {
+class FCreateMeshFromMeshDataOnProceduralMeshComponentLatentAction : public FPendingLatentAction
+{
 public:
-	FCreateMeshFromMeshDataOnProceduralMeshComponentLatentAction(
-	    const FLatentActionInfo& InLatentInfo, const FLoadedMeshData& InMeshData,
-	    UMaterialInterface&       InOutParentMaterialInterface,
-	    UProceduralMeshComponent& InOutTargetProceduralMeshComponent);
+    FCreateMeshFromMeshDataOnProceduralMeshComponentLatentAction(
+        const FLatentActionInfo &InLatentInfo, const FLoadedMeshData &InMeshData,
+        UMaterialInterface &InOutParentMaterialInterface, UProceduralMeshComponent &InOutTargetProceduralMeshComponent);
 
 public:
-	// this function is called every frame to check if it has finished.
-	virtual void UpdateOperation(FLatentResponse& Response) override;
+    // this function is called every frame to check if it has finished.
+    virtual void UpdateOperation(FLatentResponse &Response) override;
 
-	/* internal functions */
+    /* internal functions */
 private:
-	// finish latent action
-	void Finish();
+    // finish latent action
+    void Finish();
 
-	/* internal fields */
+    /* internal fields */
 private:
-	bool IsRunning = false;
+    bool IsRunning = false;
 
-	FName          ExecutionFunction;
-	int32          OutputLink;
-	FWeakObjectPtr CallbackTarget;
+    FName ExecutionFunction;
+    int32 OutputLink;
+    FWeakObjectPtr CallbackTarget;
 };

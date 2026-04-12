@@ -8,53 +8,47 @@
 // Failure-path tests
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetFile_NonExistentPath_ReturnsFailure,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.NonExistentPath",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetFile_NonExistentPath_ReturnsFailure,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.NonExistentPath",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetFile_NonExistentPath_ReturnsFailure::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetFile_NonExistentPath_ReturnsFailure::RunTest(const FString &Parameters)
 {
     ELoadMeshFromAssetFileResult Result;
-    FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetFile(
-        TEXT("C:/nonexistent/path/does_not_exist.fbx"), Result);
+    FLoadedMeshData MeshData =
+        UAssetLoader::LoadMeshFromAssetFile(TEXT("C:/nonexistent/path/does_not_exist.fbx"), Result);
 
-    TestEqual(
-        TEXT("Loading a non-existent file should return Failure without crashing"),
-        Result, ELoadMeshFromAssetFileResult::Failure);
+    TestEqual(TEXT("Loading a non-existent file should return Failure without crashing"), Result,
+              ELoadMeshFromAssetFileResult::Failure);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetFile_EmptyPath_ReturnsFailure,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.EmptyPath",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetFile_EmptyPath_ReturnsFailure,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.EmptyPath",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetFile_EmptyPath_ReturnsFailure::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetFile_EmptyPath_ReturnsFailure::RunTest(const FString &Parameters)
 {
     ELoadMeshFromAssetFileResult Result;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetFile(TEXT(""), Result);
 
-    TestEqual(
-        TEXT("Loading with an empty path should return Failure without crashing"),
-        Result, ELoadMeshFromAssetFileResult::Failure);
+    TestEqual(TEXT("Loading with an empty path should return Failure without crashing"), Result,
+              ELoadMeshFromAssetFileResult::Failure);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetData_EmptyArray_ReturnsFailure,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.EmptyArray",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_EmptyArray_ReturnsFailure,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.EmptyArray",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetData_EmptyArray_ReturnsFailure::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetData_EmptyArray_ReturnsFailure::RunTest(const FString &Parameters)
 {
     ELoadMeshFromAssetDataResult Result;
     TArray<uint8> EmptyData;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(EmptyData, Result);
 
-    TestEqual(
-        TEXT("Loading from an empty byte array should return Failure without crashing"),
-        Result, ELoadMeshFromAssetDataResult::Failure);
+    TestEqual(TEXT("Loading from an empty byte array should return Failure without crashing"), Result,
+              ELoadMeshFromAssetDataResult::Failure);
     return true;
 }
 
@@ -71,17 +65,15 @@ namespace
         {
             return FString();
         }
-        return FPaths::Combine(Plugin->GetBaseDir(),
-                               TEXT("Source/RuntimeAssetImportTest/TestAssets"));
+        return FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/RuntimeAssetImportTest/TestAssets"));
     }
 } // namespace
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetFile_ObjTriangle_ReturnsSuccess,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.ObjTriangle",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetFile_ObjTriangle_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.ObjTriangle",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetFile_ObjTriangle_ReturnsSuccess::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetFile_ObjTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
 {
     const FString TestAssetsDir = GetTestAssetsDir();
     if (TestAssetsDir.IsEmpty())
@@ -94,21 +86,17 @@ bool FLoadMeshFromAssetFile_ObjTriangle_ReturnsSuccess::RunTest(const FString& P
     ELoadMeshFromAssetFileResult Result;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetFile(ObjPath, Result);
 
-    TestEqual(
-        TEXT("Loading a valid OBJ triangle should return Success"),
-        Result, ELoadMeshFromAssetFileResult::Success);
-    TestTrue(
-        TEXT("Loaded OBJ triangle should have at least one mesh node"),
-        MeshData.NodeList.Num() > 0);
+    TestEqual(TEXT("Loading a valid OBJ triangle should return Success"), Result,
+              ELoadMeshFromAssetFileResult::Success);
+    TestTrue(TEXT("Loaded OBJ triangle should have at least one mesh node"), MeshData.NodeList.Num() > 0);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetFile_ObjCube_ReturnsSuccess,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.ObjCube",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetFile_ObjCube_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.ObjCube",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetFile_ObjCube_ReturnsSuccess::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetFile_ObjCube_ReturnsSuccess::RunTest(const FString &Parameters)
 {
     const FString TestAssetsDir = GetTestAssetsDir();
     if (TestAssetsDir.IsEmpty())
@@ -121,21 +109,16 @@ bool FLoadMeshFromAssetFile_ObjCube_ReturnsSuccess::RunTest(const FString& Param
     ELoadMeshFromAssetFileResult Result;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetFile(ObjPath, Result);
 
-    TestEqual(
-        TEXT("Loading a valid OBJ cube should return Success"),
-        Result, ELoadMeshFromAssetFileResult::Success);
-    TestTrue(
-        TEXT("Loaded OBJ cube should have at least one mesh node"),
-        MeshData.NodeList.Num() > 0);
+    TestEqual(TEXT("Loading a valid OBJ cube should return Success"), Result, ELoadMeshFromAssetFileResult::Success);
+    TestTrue(TEXT("Loaded OBJ cube should have at least one mesh node"), MeshData.NodeList.Num() > 0);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetFile_GltfScene_ReturnsSuccess,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.GltfScene",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetFile_GltfScene_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetFile.GltfScene",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetFile_GltfScene_ReturnsSuccess::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetFile_GltfScene_ReturnsSuccess::RunTest(const FString &Parameters)
 {
     const FString TestAssetsDir = GetTestAssetsDir();
     if (TestAssetsDir.IsEmpty())
@@ -148,21 +131,16 @@ bool FLoadMeshFromAssetFile_GltfScene_ReturnsSuccess::RunTest(const FString& Par
     ELoadMeshFromAssetFileResult Result;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetFile(GltfPath, Result);
 
-    TestEqual(
-        TEXT("Loading a valid glTF scene should return Success"),
-        Result, ELoadMeshFromAssetFileResult::Success);
-    TestTrue(
-        TEXT("Loaded glTF scene should have at least one mesh node"),
-        MeshData.NodeList.Num() > 0);
+    TestEqual(TEXT("Loading a valid glTF scene should return Success"), Result, ELoadMeshFromAssetFileResult::Success);
+    TestTrue(TEXT("Loaded glTF scene should have at least one mesh node"), MeshData.NodeList.Num() > 0);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess,
-    "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.ObjTriangle",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.ObjTriangle",
+                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess::RunTest(const FString& Parameters)
+bool FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
 {
     const FString TestAssetsDir = GetTestAssetsDir();
     if (TestAssetsDir.IsEmpty())
@@ -182,11 +160,7 @@ bool FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess::RunTest(const FString& P
     ELoadMeshFromAssetDataResult Result;
     FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(FileBytes, Result);
 
-    TestEqual(
-        TEXT("Loading OBJ triangle bytes should return Success"),
-        Result, ELoadMeshFromAssetDataResult::Success);
-    TestTrue(
-        TEXT("Loaded OBJ triangle from memory should have at least one mesh node"),
-        MeshData.NodeList.Num() > 0);
+    TestEqual(TEXT("Loading OBJ triangle bytes should return Success"), Result, ELoadMeshFromAssetDataResult::Success);
+    TestTrue(TEXT("Loaded OBJ triangle from memory should have at least one mesh node"), MeshData.NodeList.Num() > 0);
     return true;
 }
