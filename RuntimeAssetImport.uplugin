@@ -20,6 +20,11 @@
 			"Name": "RuntimeAssetImport",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "RuntimeAssetImportTest",
+			"Type": "Developer",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [

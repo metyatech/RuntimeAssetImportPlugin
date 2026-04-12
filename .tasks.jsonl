@@ -1,1 +1,2 @@
 {"id":"FoGYRJM_","description":"Commit RuntimeAssetImportPlugin marketplace packaging assets and script after verifying the package step","stage":"committed","createdAt":"2026-04-11T23:57:46.222Z","updatedAt":"2026-04-11T23:58:52.554Z","committedEventId":"fY1giYB9v6YCjCoZ"}
+{"id":"A8ETBUzO","description":"Re-enable RuntimeAssetImportTest module in RuntimeAssetImportPlugin so RuntimeAssetImportSample can verify against current plugin master","stage":"committed","createdAt":"2026-04-12T12:32:46.476Z","updatedAt":"2026-04-12T12:33:18.013Z","committedEventId":"TUk6uEicecWjw-HW"}
