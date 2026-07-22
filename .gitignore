@@ -14,5 +14,5 @@ Saved
 *.xcodeproj
 *.xcworkspace
 **/.DS_Store
-PackedForMarketplace/
-*_Marketplace.zip
+PackedForFab/
+RuntimeAssetImport_*_UE*_Win64.zip

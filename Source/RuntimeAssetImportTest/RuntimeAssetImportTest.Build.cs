@@ -7,6 +7,16 @@ public class RuntimeAssetImportTest : ModuleRules
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "RuntimeAssetImport", "Projects" });
-        PrivateDependencyModuleNames.AddRange(new string[] { "CoreUObject", "Engine" });
+        PrivateDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "CoreUObject",
+                "Engine",
+                "UnrealEd",
+                "GeometryFramework",
+                "ProceduralMeshComponent",
+                "assimp",
+            }
+        );
     }
 }

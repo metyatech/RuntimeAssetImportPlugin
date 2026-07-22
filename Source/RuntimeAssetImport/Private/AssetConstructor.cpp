@@ -2,75 +2,51 @@
 
 #include "AssetConstructor.h"
 
-#include "HasFeatureFix.h"
 #include "AssetConstructorHelpers.h"
 #include "AssetLoader.h"
-#include "CreateMeshFromMeshDataOnProceduralMeshComponentLatentAction.h"
-#include "Engine/Engine.h"
-#include "Engine/LatentActionManager.h"
+#include "LogAssetConstructor.h"
 
-void UAssetConstructor::CreateMeshFromMeshDataOnProceduralMeshComponent(
-    const UObject *WorldContextObject, FLatentActionInfo LatentActionInfo, const FLoadedMeshData &MeshData,
-    UMaterialInterface *ParentMaterialInterface, UProceduralMeshComponent *TargetProceduralMeshComponent)
+namespace
 {
-    // check to WorldContextObject is properly set
-    check(WorldContextObject != nullptr);
-
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to TargetProceduralMeshComponent is properly set
-    check(TargetProceduralMeshComponent != nullptr);
-
-    const auto World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::Assert);
-    check(World != nullptr);
-
-    FLatentActionManager &LatentActionManager = World->GetLatentActionManager();
-
-    LatentActionManager.AddNewAction(
-        LatentActionInfo.CallbackTarget, LatentActionInfo.UUID,
-        new FCreateMeshFromMeshDataOnProceduralMeshComponentLatentAction(
-            LatentActionInfo, MeshData, *ParentMaterialInterface, *TargetProceduralMeshComponent));
-}
+    bool ValidateConstructionArguments(const TCHAR *FunctionName, UMaterialInterface *ParentMaterialInterface,
+                                       AActor *Owner)
+    {
+        if (Owner == nullptr)
+        {
+            UE_LOG(LogAssetConstructor, Error, TEXT("%s failed: Owner is null."), FunctionName);
+            return false;
+        }
+        if (ParentMaterialInterface == nullptr)
+        {
+            UE_LOG(LogAssetConstructor, Error, TEXT("%s failed: ParentMaterialInterface is null."), FunctionName);
+            return false;
+        }
+        return true;
+    }
+} // namespace
 
 UProceduralMeshComponent *UAssetConstructor::ConstructProceduralMeshComponentFromMeshData(
     const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterialInterface, AActor *const Owner,
     const bool ShouldRegisterComponentToOwner)
 {
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
+    if (!ValidateConstructionArguments(TEXT("ConstructProceduralMeshComponentFromMeshData"), ParentMaterialInterface,
+                                       Owner))
+    {
+        return nullptr;
+    }
     return ConstructMeshComponentFromMeshData<UProceduralMeshComponent>(MeshData, ParentMaterialInterface, Owner,
                                                                         ShouldRegisterComponentToOwner);
-}
-
-UStaticMeshComponent *UAssetConstructor::ConstructStaticMeshComponentFromMeshData(
-    const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterialInterface, AActor *const Owner,
-    const bool ShouldRegisterComponentToOwner)
-{
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
-    return ConstructMeshComponentFromMeshData<UStaticMeshComponent>(MeshData, ParentMaterialInterface, Owner,
-                                                                    ShouldRegisterComponentToOwner);
 }
 
 UDynamicMeshComponent *UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(
     const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterialInterface, AActor *const Owner,
     const bool ShouldRegisterComponentToOwner)
 {
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
+    if (!ValidateConstructionArguments(TEXT("ConstructDynamicMeshComponentFromMeshData"), ParentMaterialInterface,
+                                       Owner))
+    {
+        return nullptr;
+    }
     return ConstructMeshComponentFromMeshData<UDynamicMeshComponent>(MeshData, ParentMaterialInterface, Owner,
                                                                      ShouldRegisterComponentToOwner);
 }
@@ -80,88 +56,69 @@ UProceduralMeshComponent *UAssetConstructor::ConstructProceduralMeshComponentFro
     EConstructProceduralMeshComponentFromAssetFileResult &ConstructProceduralMeshComponentFromAssetFileResult,
     const bool ShouldRegisterComponentToOwner)
 {
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
-    // load mesh from asset file(path: FilePath)
-    ELoadMeshFromAssetFileResult LoadMeshFromAssetFileResult;
-    const auto &LoadedMeshData = UAssetLoader::LoadMeshFromAssetFile(FilePath, LoadMeshFromAssetFileResult);
-
-    // check load result
-    if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult)
+    ConstructProceduralMeshComponentFromAssetFileResult = EConstructProceduralMeshComponentFromAssetFileResult::Failure;
+    if (!ValidateConstructionArguments(TEXT("ConstructProceduralMeshComponentFromAssetFile"), ParentMaterialInterface,
+                                       Owner))
     {
-        ConstructProceduralMeshComponentFromAssetFileResult =
-            EConstructProceduralMeshComponentFromAssetFileResult::Failure;
+        return nullptr;
+    }
+    if (FilePath.IsEmpty())
+    {
+        UE_LOG(LogAssetConstructor, Error,
+               TEXT("ConstructProceduralMeshComponentFromAssetFile failed: FilePath is empty."));
         return nullptr;
     }
 
-    // assume the result is success
+    ELoadMeshFromAssetFileResult LoadResult = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData LoadedMeshData = UAssetLoader::LoadMeshFromAssetFile(FilePath, LoadResult);
+    if (LoadResult != ELoadMeshFromAssetFileResult::Success)
+    {
+        return nullptr;
+    }
+
+    UProceduralMeshComponent *Component = ConstructProceduralMeshComponentFromMeshData(
+        LoadedMeshData, ParentMaterialInterface, Owner, ShouldRegisterComponentToOwner);
+    if (Component == nullptr)
+    {
+        return nullptr;
+    }
+
     ConstructProceduralMeshComponentFromAssetFileResult = EConstructProceduralMeshComponentFromAssetFileResult::Success;
-
-    // construct from loaded mesh data
-    return ConstructProceduralMeshComponentFromMeshData(LoadedMeshData, ParentMaterialInterface, Owner,
-                                                        ShouldRegisterComponentToOwner);
-}
-
-UStaticMeshComponent *UAssetConstructor::ConstructStaticMeshComponentFromAssetFile(
-    const FString &FilePath, UMaterialInterface *ParentMaterialInterface, AActor *Owner,
-    EConstructStaticMeshComponentFromAssetFileResult &ConstructStaticMeshComponentFromAssetFileResult,
-    bool ShouldRegisterComponentToOwner)
-{
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
-    // load mesh from asset file(path: FilePath)
-    ELoadMeshFromAssetFileResult LoadMeshFromAssetFileResult;
-    const auto &LoadedMeshData = UAssetLoader::LoadMeshFromAssetFile(FilePath, LoadMeshFromAssetFileResult);
-
-    // check load result
-    if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult)
-    {
-        ConstructStaticMeshComponentFromAssetFileResult = EConstructStaticMeshComponentFromAssetFileResult::Failure;
-        return nullptr;
-    }
-
-    // assume the result is success
-    ConstructStaticMeshComponentFromAssetFileResult = EConstructStaticMeshComponentFromAssetFileResult::Success;
-
-    // construct from loaded mesh data
-    return ConstructStaticMeshComponentFromMeshData(LoadedMeshData, ParentMaterialInterface, Owner,
-                                                    ShouldRegisterComponentToOwner);
+    return Component;
 }
 
 UDynamicMeshComponent *UAssetConstructor::ConstructDynamicMeshComponentFromAssetFile(
-    const FString &FilePath, UMaterialInterface *ParentMaterialInterface, AActor *Owner,
+    const FString &FilePath, UMaterialInterface *const ParentMaterialInterface, AActor *const Owner,
     EConstructDynamicMeshComponentFromAssetFileResult &ConstructDynamicMeshComponentFromAssetFileResult,
-    bool ShouldRegisterComponentToOwner)
+    const bool ShouldRegisterComponentToOwner)
 {
-    // check to ParentMaterialInterface is properly set
-    check(ParentMaterialInterface != nullptr);
-
-    // check to Owner is properly set
-    check(Owner != nullptr);
-
-    // load mesh from asset file(path: FilePath)
-    ELoadMeshFromAssetFileResult LoadMeshFromAssetFileResult;
-    const auto &LoadedMeshData = UAssetLoader::LoadMeshFromAssetFile(FilePath, LoadMeshFromAssetFileResult);
-
-    // check load result
-    if (ELoadMeshFromAssetFileResult::Failure == LoadMeshFromAssetFileResult)
+    ConstructDynamicMeshComponentFromAssetFileResult = EConstructDynamicMeshComponentFromAssetFileResult::Failure;
+    if (!ValidateConstructionArguments(TEXT("ConstructDynamicMeshComponentFromAssetFile"), ParentMaterialInterface,
+                                       Owner))
     {
-        ConstructDynamicMeshComponentFromAssetFileResult = EConstructDynamicMeshComponentFromAssetFileResult::Failure;
+        return nullptr;
+    }
+    if (FilePath.IsEmpty())
+    {
+        UE_LOG(LogAssetConstructor, Error,
+               TEXT("ConstructDynamicMeshComponentFromAssetFile failed: FilePath is empty."));
         return nullptr;
     }
 
-    // assume the result is success
-    ConstructDynamicMeshComponentFromAssetFileResult = EConstructDynamicMeshComponentFromAssetFileResult::Success;
+    ELoadMeshFromAssetFileResult LoadResult = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData LoadedMeshData = UAssetLoader::LoadMeshFromAssetFile(FilePath, LoadResult);
+    if (LoadResult != ELoadMeshFromAssetFileResult::Success)
+    {
+        return nullptr;
+    }
 
-    // construct from loaded mesh data
-    return ConstructDynamicMeshComponentFromMeshData(LoadedMeshData, ParentMaterialInterface, Owner,
-                                                     ShouldRegisterComponentToOwner);
+    UDynamicMeshComponent *Component = ConstructDynamicMeshComponentFromMeshData(
+        LoadedMeshData, ParentMaterialInterface, Owner, ShouldRegisterComponentToOwner);
+    if (Component == nullptr)
+    {
+        return nullptr;
+    }
+
+    ConstructDynamicMeshComponentFromAssetFileResult = EConstructDynamicMeshComponentFromAssetFileResult::Success;
+    return Component;
 }

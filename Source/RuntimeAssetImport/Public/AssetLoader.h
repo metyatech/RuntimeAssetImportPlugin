@@ -54,7 +54,8 @@ public:
      *          If the result is Failure, the return value is empty
      *          (default-constructed).
      */
-    UFUNCTION(BlueprintCallable, meta = (ExpandEnumAsExecs = "LoadMeshFromAssetFileResult"))
+    UFUNCTION(BlueprintCallable, Category = "Runtime Asset Import|Loading",
+              meta = (ExpandEnumAsExecs = "LoadMeshFromAssetFileResult"))
     static UPARAM(DisplayName = "Mesh Data") FLoadedMeshData
         LoadMeshFromAssetFile(const FString &FilePath, ELoadMeshFromAssetFileResult &LoadMeshFromAssetFileResult);
 
@@ -67,7 +68,8 @@ public:
      *          If the result is Failure, the return value is empty
      *          (default-constructed).
      */
-    UFUNCTION(BlueprintCallable, meta = (ExpandEnumAsExecs = "LoadMeshFromAssetDataResult"))
+    UFUNCTION(BlueprintCallable, Category = "Runtime Asset Import|Loading",
+              meta = (ExpandEnumAsExecs = "LoadMeshFromAssetDataResult"))
     static UPARAM(DisplayName = "Mesh Data") FLoadedMeshData
         LoadMeshFromAssetData(const TArray<uint8> &AssetData,
                               ELoadMeshFromAssetDataResult &LoadMeshFromAssetDataResult);

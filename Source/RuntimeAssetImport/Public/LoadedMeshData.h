@@ -20,11 +20,11 @@ struct RUNTIMEASSETIMPORT_API FLoadedMeshData
     // List of all nodes.
     // The parent-child relationship is indicated by
     // FLoadedMeshNode::ParentNodeIndex.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh")
     TArray<FLoadedMeshNode> NodeList;
 
     // List of materials. Which mesh (or more precisely, mesh section) uses which
     // material is indicated by FLoadedMeshSectionData::MaterialIndex.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh")
     TArray<FLoadedMaterialData> MaterialList;
 };

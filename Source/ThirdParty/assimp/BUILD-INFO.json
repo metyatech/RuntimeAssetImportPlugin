@@ -1,0 +1,163 @@
+{
+    "Dependency":  "Assimp",
+    "Version":  "6.0.5",
+    "SourceRepository":  "https://github.com/assimp/assimp.git",
+    "SourceTag":  "v6.0.5",
+    "SourceCommit":  "392a658f9c271be965271f45e7521a1b80ea4392",
+    "CMakeGenerator":  "Visual Studio 17 2022",
+    "Architecture":  "x64",
+    "Toolset":  "v143",
+    "Configuration":  "Release",
+    "CMakeVersion":  "3.31.4",
+    "MsvcCompilerVersion":  "19.44.35228.0",
+    "CMakeOptions":  [
+                         {
+                             "Name":  "BUILD_SHARED_LIBS",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_ASSIMP_TOOLS",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_ASSIMP_VIEW",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_TESTS",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_SAMPLES",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_DOCS",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_ZLIB",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_INSTALL",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_INSTALL_PDB",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_WARNINGS_AS_ERRORS",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_HUNTER_ENABLED",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_NO_EXPORT",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT",
+                             "Value":  "ON"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_DRACO",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_USD_IMPORTER",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_BUILD_NONFREE_C4D_IMPORTER",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "USE_STATIC_CRT",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "ASSIMP_IGNORE_GIT_HASH",
+                             "Value":  "OFF"
+                         },
+                         {
+                             "Name":  "CMAKE_C_FLAGS",
+                             "Value":  "/DWIN32 /D_WINDOWS /W3 /experimental:deterministic /pathmap:$WORK_DIRECTORY/source=C:\\assimp-source"
+                         },
+                         {
+                             "Name":  "CMAKE_CXX_FLAGS",
+                             "Value":  "/DWIN32 /D_WINDOWS /W3 /GR /EHsc /experimental:deterministic /pathmap:$WORK_DIRECTORY/source=C:\\assimp-source"
+                         },
+                         {
+                             "Name":  "CMAKE_SHARED_LINKER_FLAGS",
+                             "Value":  "/Brepro"
+                         },
+                         {
+                             "Name":  "CMAKE_EXE_LINKER_FLAGS",
+                             "Value":  "/Brepro"
+                         },
+                         {
+                             "Name":  "CMAKE_INSTALL_PREFIX",
+                             "Value":  "$WORK_DIRECTORY/install"
+                         }
+                     ],
+    "Dll":  {
+                "FileName":  "assimp-vc143-mt.dll",
+                "Size":  5788160,
+                "Sha256":  "068b4f5c7c555d1a8b31390f6d37b8066cc0634857d5053cd4a0a69d3af5ca2e"
+            },
+    "ImportLibrary":  {
+                          "FileName":  "assimp-vc143-mt.lib",
+                          "Size":  591172,
+                          "Sha256":  "ab36180dbf13bb3d76c59824ef85f9d8432eb30018f027a981f81324a253ef57"
+                      },
+    "EphemeralAssimpExe":  {
+                               "FileName":  "assimp.exe",
+                               "Size":  152576,
+                               "Sha256":  "25ffca84c297df3192e3f257a06a154968d5302bc6a56d32102b5447a4aa5023"
+                           },
+    "HeadersManifestSha256":  "8339d2316fa46731fc25b440dfbf6f62184a1545a96aa17efd391ebbbe2cb8b6",
+    "DllDependencies":  [
+                            "KERNEL32.dll",
+                            "MSVCP140.dll",
+                            "VCRUNTIME140.dll",
+                            "VCRUNTIME140_1.dll",
+                            "api-ms-win-crt-runtime-l1-1-0.dll",
+                            "api-ms-win-crt-stdio-l1-1-0.dll",
+                            "api-ms-win-crt-filesystem-l1-1-0.dll",
+                            "api-ms-win-crt-string-l1-1-0.dll",
+                            "api-ms-win-crt-heap-l1-1-0.dll",
+                            "api-ms-win-crt-convert-l1-1-0.dll",
+                            "api-ms-win-crt-math-l1-1-0.dll",
+                            "api-ms-win-crt-time-l1-1-0.dll"
+                        ],
+    "TestAssetGenerationCommands":  [
+                                        "assimp.exe export test_triangle.obj test_triangle.fbx -ffbx",
+                                        "assimp.exe export test_triangle.obj test_triangle.dae -fcollada",
+                                        "assimp.exe export test_triangle.obj test_triangle.glb -fglb2"
+                                    ],
+    "GeneratedTestAssets":  [
+                                {
+                                    "FileName":  "test_triangle.fbx",
+                                    "Size":  16752,
+                                    "Sha256":  "607dc88195be51ce0f28106d79ed6a6764d2a0a5df027e3c5f9be7f17c214e79"
+                                },
+                                {
+                                    "FileName":  "test_triangle.dae",
+                                    "Size":  5498,
+                                    "Sha256":  "0ffa93b87d11224aa348f90f14462557cb1292a8ba9afbffdb0cf89231bb5292"
+                                },
+                                {
+                                    "FileName":  "test_triangle.glb",
+                                    "Size":  1712,
+                                    "Sha256":  "1d23346d9063a4c6226fe84ea7ebdd8099843cdc185c141a23e75f5e6891b050"
+                                }
+                            ]
+}

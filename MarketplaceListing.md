@@ -1,84 +1,83 @@
-﻿# RuntimeAssetImport Plugin - Marketplace Listing Info
+# Fab Marketplace Listing
 
-Use this information to fill out the product details on the Fab / Unreal Engine Marketplace publisher portal.
+## Product Details
 
-## Basic Info
+```text
+Product Title: Runtime Asset Import
+Category: Tools & Plugins
+Subcategory: Engine Tools
+Distribution: Unreal Engine Code Plugin
+License: Fab Standard License
+Personal Price: $29.99
+Professional Price: $79.99
+Version: 1.0.0
+Supported Target Platform: Win64
+Mature Content: No
+Generated with AI: Yes
+Allows usage with AI: Yes
+EDC forum post: No
+Publication after approval: Manual activation
+```
 
-**Product Title:**
-Runtime Asset Import
+## Short Description
 
-**Category:**
-Tools and Plugins > Code Plugins
-
-**Short Description (max 255 chars):**
-Import 3D meshes (FBX, OBJ, glTF, etc.) at runtime in Unreal Engine 5. Powered by Assimp (prebuilt binaries included). Supports both ProceduralMesh and DynamicMesh.
-
-**Price:**
-$29.99 (Suggested)
-
-**Version:**
-1.0
+Import static 3D meshes such as FBX, OBJ, glTF/GLB, and DAE at runtime on Win64. Load from files or memory using Blueprint or C++, then build DynamicMesh or ProceduralMesh components.
 
 ## Long Description
 
-**RuntimeAssetImport** allows you to load 3D model files from disk or URL at runtime in your packaged games and applications. It leverages the powerful **Open Asset Import Library (Assimp)** to support a wide range of formats including FBX, OBJ, glTF/GLB, DAE, and more.
+Runtime Asset Import loads static 3D mesh files at runtime in packaged Unreal Engine applications on Windows (Win64). Use Blueprint or C++ to import from a file path or an in-memory byte array, then create a Dynamic Mesh Component hierarchy or a Procedural Mesh Component hierarchy.
 
-### Key Features:
-*   **Runtime Import:** Load 3D assets dynamically without cooking.
-*   **Wide Format Support:** Supports over 40+ formats via Assimp (FBX, OBJ, GLB, etc.).
-*   **Prebuilt Binaries:** Includes pre-compiled Assimp DLLs for Win64. **No CMake or external setup required.** Just enable the plugin and go.
-*   **Blueprint & C++:** Full support for both Blueprint visual scripting and C++ integration.
-*   **Async Loading:** Imports assets asynchronously to prevent game thread hitches.
-*   **Materials:** Automatically creates basic materials and imports textures.
+Tested formats:
 
-### Important Notes:
-*   **3rd Party Dependency:** This product includes the **Open Asset Import Library (Assimp)** which is used under the BSD-3-Clause license.
-*   **Platform Support:** Currently supports **Windows (Win64)** only due to prebuilt library dependencies.
+- FBX
+- OBJ
+- glTF / GLB
+- DAE (Collada)
 
-### Usage:
-This plugin provides two main methods for importing meshes:
-1.  **DynamicMesh (Recommended):** Uses the modern Geometry Scripting framework. Stable and performant.
-2.  *ProceduralMesh (Experimental):* Uses the legacy ProceduralMeshComponent. (Note: Known issues with materials in packaged builds).
+Key features:
 
-### Included Modules:
-*   **RuntimeAssetImport (Runtime):** Core loading logic and Blueprint nodes.
-*   **assimp (External):** Prebuilt ThirdParty library (Win64).
+- Runtime static mesh import without cooking the source model
+- Blueprint and C++ APIs
+- File and memory input
+- Hierarchical node transforms and multiple mesh sections
+- Diffuse color and one embedded diffuse/base-color texture per material
+- Collision generation on constructed mesh components
+- Assimp 6.0.5 Win64 binaries built from the official source tag and bundled with the plugin
+
+Important limitations:
+
+- Win64 only
+- Import is synchronous and can block the calling thread for large files
+- Static geometry only; skeletal meshes, animations, morph targets, and LOD import are not supported
+- External texture references are not loaded
+- The first texture, first UV channel, and first vertex-color channel are used
+- Runtime-created meshes are local and are not automatically replicated
+- ProceduralMeshComponent can cause movement/network issues in multiplayer; DynamicMeshComponent is recommended
 
 ## Technical Details
 
-**Features:**
-*   Import Mesh from File (Async/Sync)
-*   Import Mesh from URL
-*   Procedural Mesh generation
-*   Dynamic Mesh generation
+```text
+Code Modules: RuntimeAssetImport (Runtime)
+Blueprint Assets: 0
+Blueprint-callable C++ Functions: 6
+Network Replicated: No
+Development Platform: Windows Win64
+Target Platform: Windows Win64
+Third Party: Assimp 6.0.5, BSD-3-Clause
+Documentation: https://github.com/metyatech/RuntimeAssetImportPlugin/blob/master/README.md
+Support: https://github.com/metyatech/RuntimeAssetImportPlugin/issues
+Example Project: None for the initial release
+Test Host: https://github.com/metyatech/RuntimeAssetImportSample
+```
 
-**Code Modules:**
-*   RuntimeAssetImport (Runtime)
+## Verified Engine Versions
 
-**Number of Blueprints:**
-0
+- Unreal Engine 5.4
+- Unreal Engine 5.5
+- Unreal Engine 5.6
+- Unreal Engine 5.7
+- Unreal Engine 5.8
 
-**Number of C++ Classes:**
-10+
+## Tags
 
-**Network Replicated:**
-No (The loaded mesh is local to the client, but the component can be replicated if the actor is set to replicate)
-
-**Supported Development Platforms:**
-Windows (Win64)
-
-**Supported Target Build Platforms:**
-Windows (Win64)
-
-**Documentation:**
-[GitHub README](https://github.com/metyatech/RuntimeAssetImportPlugin/blob/main/README.md)
-
-**Example Project:**
-[RuntimeAssetImportSample](https://github.com/metyatech/RuntimeAssetImportSample)
-
-**Support Email:**
-fab-support@metyatech.com
-
-## Search Tags
-import, fbx, obj, gltf, runtime, assimp, procedural, mesh, loading
-
+`runtime`, `import`, `mesh`, `fbx`, `obj`, `gltf`, `glb`, `dae`, `assimp`, `dynamic mesh`, `procedural mesh`, `modding`, `blueprint`

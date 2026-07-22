@@ -8,24 +8,43 @@ public class assimp : ModuleRules
     public assimp(ReadOnlyTargetRules Target) : base(Target)
     {
         Type = ModuleType.External;
-        bEnableUndefinedIdentifierWarnings = false;
 
-        // Add the include directory (prebuilt headers)
-        PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "Include"));
-
-        if (Target.Platform == UnrealTargetPlatform.Win64)
+        if (Target.Platform != UnrealTargetPlatform.Win64)
         {
-            var libPath = Path.Combine(ModuleDirectory, "Lib", "Win64", "assimp-vc143-mt.lib");
-            var dllPath = Path.Combine(ModuleDirectory, "Bin", "Win64", "assimp-vc143-mt.dll");
+            throw new BuildException("Runtime Asset Import bundles Assimp only for Windows Win64.");
+        }
 
-            // Add the import library
-            PublicAdditionalLibraries.Add(libPath);
+        string includePath = Path.Combine(ModuleDirectory, "Include");
+        string configHeaderPath = Path.Combine(includePath, "assimp", "config.h");
+        string revisionHeaderPath = Path.Combine(includePath, "assimp", "revision.h");
+        string libPath = Path.Combine(ModuleDirectory, "Lib", "Win64", "assimp-vc143-mt.lib");
+        string dllPath = Path.Combine(ModuleDirectory, "Bin", "Win64", "assimp-vc143-mt.dll");
 
-            // Delay-load the DLL, so we can load it from the right place first
-            PublicDelayLoadDLLs.Add(dllPath);
+        RequireDirectory(includePath, "Assimp include directory");
+        RequireFile(configHeaderPath, "generated Assimp config.h");
+        RequireFile(revisionHeaderPath, "generated Assimp revision.h");
+        RequireFile(libPath, "Assimp import library");
+        RequireFile(dllPath, "Assimp runtime DLL");
 
-            // Ensure that the DLL is staged along with the executable
-            RuntimeDependencies.Add("$(BinaryOutputDir)", dllPath);
+        PublicSystemIncludePaths.Add(includePath);
+        PublicAdditionalLibraries.Add(libPath);
+        PublicDelayLoadDLLs.Add("assimp-vc143-mt.dll");
+        RuntimeDependencies.Add("$(TargetOutputDir)/assimp-vc143-mt.dll", dllPath);
+    }
+
+    private static void RequireDirectory(string path, string description)
+    {
+        if (!Directory.Exists(path))
+        {
+            throw new BuildException($"{description} is missing: {path}");
+        }
+    }
+
+    private static void RequireFile(string path, string description)
+    {
+        if (!File.Exists(path))
+        {
+            throw new BuildException($"{description} is missing: {path}");
         }
     }
 }

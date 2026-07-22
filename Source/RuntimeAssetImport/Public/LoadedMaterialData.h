@@ -9,8 +9,8 @@
 /**
  * color status of diffuse color
  */
-UENUM()
-enum class EColorStatus
+UENUM(BlueprintType)
+enum class EColorStatus : uint8
 {
     // nothing is set
     None,
@@ -34,12 +34,12 @@ struct RUNTIMEASSETIMPORT_API FLoadedMaterialData
     GENERATED_BODY()
 
     // Material diffuse color, available only if ColorStatus is ColorIsSet.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Material")
     FLinearColor Color = FLinearColor(ForceInit);
 
     // Texture data compressed into some format, available only if ColorStatus is
     // TextureIsSet.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Material")
     TArray<uint8> CompressedTextureData;
 
     // Whether there exists texture or not.
@@ -50,6 +50,6 @@ struct RUNTIMEASSETIMPORT_API FLoadedMaterialData
     // if the status is TextureWasSetButError, it means that the texture was set
     // but its data could not be loaded, and both Color and CompressedTextureData
     // properties are not available.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Material")
     EColorStatus ColorStatus = EColorStatus::None;
 };

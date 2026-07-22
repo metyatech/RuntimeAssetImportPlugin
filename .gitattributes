@@ -1,0 +1,2 @@
+Source/RuntimeAssetImportTest/TestAssets/*.dae whitespace=cr-at-eol
+Source/ThirdParty/assimp/LICENSES/** whitespace=-trailing-space

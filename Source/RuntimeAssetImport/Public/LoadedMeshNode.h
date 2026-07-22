@@ -19,20 +19,20 @@ struct RUNTIMEASSETIMPORT_API FLoadedMeshNode
     GENERATED_BODY()
 
     // Name of this node
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Node")
     FString Name;
 
     // Transform relative to the parent node indicated by ParentNodeIndex
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Node")
     FTransform RelativeTransform;
 
     // Actual mesh section data. There may be more than one.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Node")
     TArray<FLoadedMeshSectionData> Sections;
 
     // All nodes are stored in FLoadedMeshData::NodeList as a sequence list.
     // The index of the parent node in that array.
-    // Min indicates that there is no parent node (i.e., the only root node).
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
-    int ParentNodeIndex = std::numeric_limits<int>::min();
+    // INDEX_NONE indicates that there is no parent node (the root node).
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Node")
+    int32 ParentNodeIndex = INDEX_NONE;
 };

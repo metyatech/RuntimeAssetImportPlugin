@@ -3,7 +3,7 @@
   <Name>assimp</Name>
   <Location>/Source/ThirdParty/assimp/</Location>
   <Function>Open Asset Import Library. Loads 3D model files in various formats (FBX, OBJ, GLTF, etc.) at runtime.</Function>
-  <Eula>https://github.com/assimp/assimp/blob/master/LICENSE</Eula>
+  <Eula>https://github.com/assimp/assimp/blob/v6.0.5/LICENSE</Eula>
   <RedistributeTo>
     <EndUserGroup>Licensees</EndUserGroup>
     <EndUserGroup>Git</EndUserGroup>
@@ -12,14 +12,14 @@
   <LicenseFolder>/Source/ThirdParty/assimp/</LicenseFolder>
   <AdditionalInfo>
     <Name>assimp</Name>
-    <Version>6.0.4</Version>
-    <Url>https://github.com/assimp/assimp</Url>
+    <Version>6.0.5</Version>
+    <Url>https://github.com/assimp/assimp/releases/tag/v6.0.5</Url>
     <License>BSD-3-Clause</License>
   </AdditionalInfo>
   <NoticeText>
 Open Asset Import Library (assimp)
 
-Copyright (c) 2006-2024, assimp team
+Copyright (c) 2006-2026, assimp team
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

@@ -16,7 +16,7 @@ struct RUNTIMEASSETIMPORT_API FLoadedMeshSectionData
     GENERATED_BODY()
 
     // Coordinates of vertices
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<FVector> Vertices;
 
     // Each element of this array represents an index in the Vertices array. It
@@ -29,31 +29,31 @@ struct RUNTIMEASSETIMPORT_API FLoadedMeshSectionData
     // the right-hand screw is turned in the order 0 -> 1 -> 2, the side to which
     // the right-hand screw advances is the front side of the triangle. See
     // details: https://monsho.hatenablog.com/entry/2015/06/20/010747
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<int32> Triangles;
 
     // An array of normal vectors for each element of Vertices. Must have
     // the same number of elements as Vertices.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<FVector> Normals;
 
     // An array of texture coordinates for each element of Vertices.
     // Must have the same number of elements as Vertices.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<FVector2D> UV0Channel;
 
     // Array of vertex color for each element of Vertices.
     // Must have the same number of elements as Vertices.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<FLinearColor> VertexColors0;
 
     // An array indicating the tangent direction of each element of Vertices.
     // Must have the same number of elements as Vertices.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
     TArray<FProcMeshTangent> Tangents;
 
     // Index in FLoadedMeshData::MaterialList of the material used by this mesh
-    // section. Max means no material.
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
-    int MaterialIndex = std::numeric_limits<int>::min();
+    // section. INDEX_NONE means no material has been assigned.
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Runtime Asset Import|Mesh Section")
+    int32 MaterialIndex = INDEX_NONE;
 };

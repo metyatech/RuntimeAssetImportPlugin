@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+  <asset>
+    <contributor>
+      <author>Assimp</author>
+      <authoring_tool>Assimp Exporter</authoring_tool>
+    </contributor>
+    <created>1970-01-01T00:00:00</created>
+    <modified>1970-01-01T00:00:00</modified>
+    <unit name="meter" meter="1" />
+    <up_axis>Y_UP</up_axis>
+  </asset>
+  <library_images>
+  </library_images>
+  <library_effects>
+    <effect id="DefaultMaterial-fx" name="DefaultMaterial">
+      <profile_COMMON>
+        <technique sid="standard">
+          <phong>
+            <emission>
+              <color sid="emission">0   0   0   1</color>
+            </emission>
+            <ambient>
+              <color sid="ambient">0   0   0   1</color>
+            </ambient>
+            <diffuse>
+              <color sid="diffuse">0.600000024   0.600000024   0.600000024   1</color>
+            </diffuse>
+            <specular>
+              <color sid="specular">0   0   0   1</color>
+            </specular>
+            <shininess>
+              <float sid="shininess">0</float>
+            </shininess>
+            <transparent>
+              <color sid="transparent">1   1   1   1</color>
+            </transparent>
+            <transparency>
+              <float sid="transparency">1</float>
+            </transparency>
+            <index_of_refraction>
+              <float sid="index_of_refraction">1</float>
+            </index_of_refraction>
+          </phong>
+        </technique>
+      </profile_COMMON>
+    </effect>
+    <effect id="TestMaterial-fx" name="TestMaterial">
+      <profile_COMMON>
+        <technique sid="standard">
+          <phong>
+            <emission>
+              <color sid="emission">0   0   0   1</color>
+            </emission>
+            <ambient>
+              <color sid="ambient">0   0   0   1</color>
+            </ambient>
+            <diffuse>
+              <color sid="diffuse">0.800000012   0.400000006   0.200000003   1</color>
+            </diffuse>
+            <specular>
+              <color sid="specular">0   0   0   1</color>
+            </specular>
+            <shininess>
+              <float sid="shininess">0</float>
+            </shininess>
+            <transparent>
+              <color sid="transparent">1   1   1   1</color>
+            </transparent>
+            <transparency>
+              <float sid="transparency">1</float>
+            </transparency>
+            <index_of_refraction>
+              <float sid="index_of_refraction">1</float>
+            </index_of_refraction>
+          </phong>
+        </technique>
+      </profile_COMMON>
+    </effect>
+  </library_effects>
+  <library_materials>
+    <material id="DefaultMaterial" name="DefaultMaterial">
+      <instance_effect url="#DefaultMaterial-fx"/>
+    </material>
+    <material id="TestMaterial" name="TestMaterial">
+      <instance_effect url="#TestMaterial-fx"/>
+    </material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="defaultobject_1" name="defaultobject" >
+      <mesh>
+        <source id="defaultobject_1-positions" name="defaultobject_1-positions">
+          <float_array id="defaultobject_1-positions-array" count="9"> 0 0 0 1 0 0 0.5 1 0 </float_array>
+          <technique_common>
+            <accessor count="3" offset="0" source="#defaultobject_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="defaultobject_1-normals" name="defaultobject_1-normals">
+          <float_array id="defaultobject_1-normals-array" count="9"> 0 0 1 0 0 1 0 0 1 </float_array>
+          <technique_common>
+            <accessor count="3" offset="0" source="#defaultobject_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="defaultobject_1-vertices">
+          <input semantic="POSITION" source="#defaultobject_1-positions" />
+        </vertices>
+        <polylist count="1" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#defaultobject_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#defaultobject_1-normals" />
+          <vcount>3 </vcount>
+          <p>0 1 2 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+  </library_geometries>
+  <library_controllers>
+  </library_controllers>
+  <library_visual_scenes>
+    <visual_scene id="test_triangle.obj" name="test_triangle.obj">
+      <node id="defaultobject" name="defaultobject" type="NODE">
+        <matrix sid="matrix">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</matrix>
+        <instance_geometry url="#defaultobject_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#TestMaterial">
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene>
+    <instance_visual_scene url="#test_triangle.obj" />
+  </scene>
+</COLLADA>

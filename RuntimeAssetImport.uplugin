@@ -1,30 +1,39 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.0",
-	"FriendlyName": "RuntimeAssetImport",
-	"Description": "Runtime mesh loading plugin for Unreal Engine 5. Supports FBX, glTF/GLB, OBJ, DAE and other formats via the Assimp library.",
-	"Category": "Mesh",
+	"VersionName": "1.0.0",
+	"FriendlyName": "Runtime Asset Import",
+	"Description": "Import static 3D mesh files at runtime from files or memory and construct DynamicMesh or ProceduralMesh components on Win64.",
+	"Category": "Tools",
 	"EngineVersion": "5.4.0",
 	"CreatedBy": "metyatech",
 	"CreatedByURL": "https://github.com/metyatech",
-	"DocsURL": "https://github.com/metyatech/RuntimeAssetImportPlugin#readme",
+	"DocsURL": "https://github.com/metyatech/RuntimeAssetImportPlugin/blob/master/README.md",
 	"MarketplaceURL": "",
 	"SupportURL": "https://github.com/metyatech/RuntimeAssetImportPlugin/issues",
 	"CanContainContent": true,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
+	"SupportedTargetPlatforms": [
+		"Win64"
+	],
 	"Modules": [
 		{
 			"Name": "RuntimeAssetImport",
 			"Type": "Runtime",
-			"LoadingPhase": "PreDefault"
+			"LoadingPhase": "PreDefault",
+			"PlatformAllowList": [
+				"Win64"
+			]
 		},
 		{
 			"Name": "RuntimeAssetImportTest",
-			"Type": "Developer",
-			"LoadingPhase": "Default"
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64"
+			]
 		}
 	],
 	"Plugins": [

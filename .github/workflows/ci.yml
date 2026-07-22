@@ -7,18 +7,18 @@ on:
 jobs:
   verify:
     runs-on: [self-hosted, windows]
-    timeout-minutes: 60
+    timeout-minutes: 10
 
     steps:
       - name: Checkout plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: RuntimeAssetImportPlugin
           fetch-depth: 0
           submodules: recursive
 
       - name: Checkout test host project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: metyatech/RuntimeAssetImportSample
           path: RuntimeAssetImportSample
@@ -30,8 +30,16 @@ jobs:
         run: |
           $pluginPath = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportPlugin"
           $linkPath   = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportSample\Plugins\RuntimeAssetImport"
-          if (Test-Path $linkPath) {
-            Remove-Item -Recurse -Force $linkPath
+          $resolvedWorkspace = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+          $resolvedLinkPath = [System.IO.Path]::GetFullPath($linkPath)
+          if (-not $resolvedLinkPath.StartsWith($resolvedWorkspace + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to replace path outside GITHUB_WORKSPACE: $resolvedLinkPath"
+          }
+          if ([System.IO.Directory]::Exists($resolvedLinkPath)) {
+            [System.IO.Directory]::EnumerateFiles($resolvedLinkPath, '*', [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
+              [System.IO.File]::SetAttributes($_, [System.IO.FileAttributes]::Normal)
+            }
+            [System.IO.Directory]::Delete($resolvedLinkPath, $true)
           }
           New-Item -ItemType Junction -Path $linkPath -Target $pluginPath
           Write-Host "Linked: $linkPath -> $pluginPath"
@@ -40,3 +48,8 @@ jobs:
         shell: powershell
         working-directory: RuntimeAssetImportSample
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\Verify.ps1 -TestFilter "RuntimeAssetImport"
+
+      - name: Validate Fab package
+        shell: powershell
+        working-directory: RuntimeAssetImportPlugin
+        run: pwsh -NoProfile -File .\PackageForFab.ps1 -EngineVersion 5.4

@@ -2,18 +2,50 @@
 
 #include "RuntimeAssetImport.h"
 
+#include "HAL/PlatformProcess.h"
+#include "Misc/Paths.h"
+
+DEFINE_LOG_CATEGORY(LogRuntimeAssetImport);
+
 #define LOCTEXT_NAMESPACE "FRuntimeAssetImportModule"
 
 void FRuntimeAssetImportModule::StartupModule()
 {
-    // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin
-    // file per-module
+    static const TCHAR *AssimpDllName = TEXT("assimp-vc143-mt.dll");
+    AssimpDllHandle = FPlatformProcess::GetDllHandle(AssimpDllName);
+    if (AssimpDllHandle != nullptr)
+    {
+        return;
+    }
+
+    const TArray<FString> CandidatePaths = {FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
+                                                            TEXT("Source/ThirdParty/assimp/Bin/Win64"), AssimpDllName),
+                                            FPaths::Combine(FPaths::EnginePluginsDir(),
+                                                            TEXT("Marketplace/RuntimeAssetImport"),
+                                                            TEXT("Source/ThirdParty/assimp/Bin/Win64"), AssimpDllName)};
+    for (const FString &CandidatePath : CandidatePaths)
+    {
+        AssimpDllHandle = FPlatformProcess::GetDllHandle(*CandidatePath);
+        if (AssimpDllHandle != nullptr)
+        {
+            return;
+        }
+    }
+
+    if (AssimpDllHandle == nullptr)
+    {
+        UE_LOG(LogRuntimeAssetImport, Error,
+               TEXT("Failed to load '%s' from the target output directory or bundled Win64 paths."), AssimpDllName);
+    }
 }
 
 void FRuntimeAssetImportModule::ShutdownModule()
 {
-    // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-    // we call this function before unloading the module.
+    if (AssimpDllHandle != nullptr)
+    {
+        FPlatformProcess::FreeDllHandle(AssimpDllHandle);
+        AssimpDllHandle = nullptr;
+    }
 }
 
 #undef LOCTEXT_NAMESPACE
