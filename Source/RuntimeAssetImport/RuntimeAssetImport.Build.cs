@@ -9,6 +9,12 @@ public class RuntimeAssetImport : ModuleRules
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseRTTI = true;
 
+        if (Target.Platform == UnrealTargetPlatform.Win64 && Target.Version.MajorVersion == 5 &&
+            Target.Version.MinorVersion == 4)
+        {
+            PublicDefinitions.Add("__has_feature(x)=0");
+        }
+
         PublicDependencyModuleNames.AddRange(
             new string[]
             {

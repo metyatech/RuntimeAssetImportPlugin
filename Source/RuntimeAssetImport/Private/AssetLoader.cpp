@@ -37,6 +37,28 @@ namespace
                FMath::IsFinite(Matrix.d4);
     }
 
+    bool IsFiniteAiVector(const aiVector3D &Value)
+    {
+        return FMath::IsFinite(Value.x) && FMath::IsFinite(Value.y) && FMath::IsFinite(Value.z);
+    }
+
+    bool IsFiniteAiColor(const aiColor4D &Value)
+    {
+        return FMath::IsFinite(Value.r) && FMath::IsFinite(Value.g) && FMath::IsFinite(Value.b) &&
+               FMath::IsFinite(Value.a);
+    }
+
+    bool IsFiniteLoadedTransform(const FTransform &Value)
+    {
+        const FVector Translation = Value.GetTranslation();
+        const FVector Scale = Value.GetScale3D();
+        const FQuat Rotation = Value.GetRotation();
+        return FMath::IsFinite(Translation.X) && FMath::IsFinite(Translation.Y) && FMath::IsFinite(Translation.Z) &&
+               FMath::IsFinite(Scale.X) && FMath::IsFinite(Scale.Y) && FMath::IsFinite(Scale.Z) &&
+               FMath::IsFinite(Rotation.X) && FMath::IsFinite(Rotation.Y) && FMath::IsFinite(Rotation.Z) &&
+               FMath::IsFinite(Rotation.W);
+    }
+
     FMatrix AiMatrixToUEMatrix(const aiMatrix4x4 &Matrix)
     {
         return {{Matrix.a1, Matrix.b1, Matrix.c1, Matrix.d1},
@@ -83,12 +105,29 @@ namespace
         return MaterialData;
     }
 
-    FLoadedMaterialData ConvertMaterial(const aiScene &Scene, const aiMaterial *Material, const int32 MaterialIndex)
+    bool ConvertMaterial(const aiScene &Scene, const aiMaterial *Material, const int32 MaterialIndex,
+                         FLoadedMaterialData &OutMaterialData, FString &OutErrorMessage)
     {
+        OutMaterialData = MakeDefaultMaterialData();
         if (Material == nullptr)
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d is null; using white."), MaterialIndex);
-            return MakeDefaultMaterialData();
+            return true;
+        }
+
+        aiColor4D ReadableColor;
+        aiReturn ColorResult = Material->Get(AI_MATKEY_BASE_COLOR, ReadableColor);
+        if (ColorResult != aiReturn_SUCCESS)
+        {
+            ColorResult = Material->Get(AI_MATKEY_COLOR_DIFFUSE, ReadableColor);
+        }
+        if (ColorResult == aiReturn_SUCCESS && !IsFiniteAiColor(ReadableColor))
+        {
+            OutErrorMessage = FString::Printf(
+                TEXT("Material index %d, node index %d, mesh index %d: attribute diffuse/base color element index "
+                     "%d contains NaN or Inf."),
+                MaterialIndex, INDEX_NONE, INDEX_NONE, 0);
+            return false;
         }
 
         aiTextureType TextureType = aiTextureType_DIFFUSE;
@@ -108,33 +147,27 @@ namespace
 
         if (TextureCount == 0)
         {
-            FLoadedMaterialData MaterialData = MakeDefaultMaterialData();
-            aiColor4D Color;
-            aiReturn ColorResult = Material->Get(AI_MATKEY_BASE_COLOR, Color);
-            if (ColorResult != aiReturn_SUCCESS)
-            {
-                ColorResult = Material->Get(AI_MATKEY_COLOR_DIFFUSE, Color);
-            }
             if (ColorResult == aiReturn_SUCCESS)
             {
-                MaterialData.Color = FLinearColor(Color.r, Color.g, Color.b, Color.a);
+                OutMaterialData.Color =
+                    FLinearColor(ReadableColor.r, ReadableColor.g, ReadableColor.b, ReadableColor.a);
             }
             else
             {
                 UE_LOG(LogAssetLoader, Warning,
                        TEXT("Material index %d has no readable diffuse/base color; using white."), MaterialIndex);
             }
-            return MaterialData;
+            return true;
         }
 
-        FLoadedMaterialData MaterialData;
-        MaterialData.ColorStatus = EColorStatus::TextureWasSetButError;
+        OutMaterialData = FLoadedMaterialData();
+        OutMaterialData.ColorStatus = EColorStatus::TextureWasSetButError;
 
         aiString TexturePath;
         if (Material->Get(AI_MATKEY_TEXTURE(TextureType, 0), TexturePath) != aiReturn_SUCCESS)
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d texture path could not be read."), MaterialIndex);
-            return MaterialData;
+            return true;
         }
 
         const aiTexture *Texture = Scene.GetEmbeddedTexture(TexturePath.C_Str());
@@ -142,7 +175,7 @@ namespace
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d texture '%s' is external and is not loaded."),
                    MaterialIndex, UTF8_TO_TCHAR(TexturePath.C_Str()));
-            return MaterialData;
+            return true;
         }
 
         if (Texture->mHeight == 0)
@@ -151,11 +184,11 @@ namespace
             {
                 UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d embedded texture data is empty."),
                        MaterialIndex);
-                return MaterialData;
+                return true;
             }
 
             const uint8 *TextureBytes = reinterpret_cast<const uint8 *>(Texture->pcData);
-            MaterialData.CompressedTextureData.Append(TextureBytes, static_cast<int32>(Texture->mWidth));
+            OutMaterialData.CompressedTextureData.Append(TextureBytes, static_cast<int32>(Texture->mWidth));
         }
         else
         {
@@ -163,7 +196,7 @@ namespace
             {
                 UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d raw embedded texture data is empty."),
                        MaterialIndex);
-                return MaterialData;
+                return true;
             }
 
             TArray64<uint8> CompressedTextureData;
@@ -171,19 +204,19 @@ namespace
             FImageUtils::CompressImage(CompressedTextureData, TEXT("png"), ImageView);
             if (!CompressedTextureData.IsEmpty())
             {
-                MaterialData.CompressedTextureData = MoveTemp(CompressedTextureData);
+                OutMaterialData.CompressedTextureData = MoveTemp(CompressedTextureData);
             }
         }
 
-        if (MaterialData.CompressedTextureData.IsEmpty())
+        if (OutMaterialData.CompressedTextureData.IsEmpty())
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d embedded texture could not be encoded."),
                    MaterialIndex);
-            return MaterialData;
+            return true;
         }
 
-        MaterialData.ColorStatus = EColorStatus::TextureIsSet;
-        return MaterialData;
+        OutMaterialData.ColorStatus = EColorStatus::TextureIsSet;
+        return true;
     }
 
     bool GenerateMaterialList(const aiScene &Scene, TArray<FLoadedMaterialData> &OutMaterialList,
@@ -206,8 +239,13 @@ namespace
         OutMaterialList.Reserve(static_cast<int32>(Scene.mNumMaterials));
         for (unsigned int MaterialIndex = 0; MaterialIndex < Scene.mNumMaterials; ++MaterialIndex)
         {
-            OutMaterialList.Add(
-                ConvertMaterial(Scene, Scene.mMaterials[MaterialIndex], static_cast<int32>(MaterialIndex)));
+            FLoadedMaterialData MaterialData;
+            if (!ConvertMaterial(Scene, Scene.mMaterials[MaterialIndex], static_cast<int32>(MaterialIndex),
+                                 MaterialData, OutErrorMessage))
+            {
+                return false;
+            }
+            OutMaterialList.Add(MoveTemp(MaterialData));
         }
         return true;
     }
@@ -255,10 +293,12 @@ namespace
         LoadedNode.Name = NodeName;
         LoadedNode.ParentNodeIndex = ParentNodeIndex;
         LoadedNode.RelativeTransform = FTransform(AiMatrixToUEMatrix(Node.mTransformation));
-        if (LoadedNode.RelativeTransform.ContainsNaN())
+        if (!IsFiniteLoadedTransform(LoadedNode.RelativeTransform))
         {
-            OutErrorMessage = FString::Printf(TEXT("Node index %d ('%s') converted transform contains NaN or Inf."),
-                                              NodeIndex, *NodeName);
+            OutErrorMessage = FString::Printf(
+                TEXT("Node index %d ('%s'), mesh index %d: attribute node transform element index %d contains NaN "
+                     "or Inf."),
+                NodeIndex, *NodeName, INDEX_NONE, 0);
             return false;
         }
 
@@ -316,10 +356,11 @@ namespace
             for (unsigned int VertexIndex = 0; VertexIndex < Mesh->mNumVertices; ++VertexIndex)
             {
                 const aiVector3D &Vertex = Mesh->mVertices[VertexIndex];
-                if (!FMath::IsFinite(Vertex.x) || !FMath::IsFinite(Vertex.y) || !FMath::IsFinite(Vertex.z))
+                if (!IsFiniteAiVector(Vertex))
                 {
                     OutErrorMessage = FString::Printf(
-                        TEXT("Node index %d ('%s'), mesh index %u: field mVertices[%u] contains NaN or Inf."),
+                        TEXT("Node index %d ('%s'), mesh index %u: attribute vertex position element index %u "
+                             "contains NaN or Inf."),
                         NodeIndex, *NodeName, SceneMeshIndex, VertexIndex);
                     return false;
                 }
@@ -366,6 +407,14 @@ namespace
                 for (unsigned int VertexIndex = 0; VertexIndex < Mesh->mNumVertices; ++VertexIndex)
                 {
                     const aiVector3D &Normal = Mesh->mNormals[VertexIndex];
+                    if (!IsFiniteAiVector(Normal))
+                    {
+                        OutErrorMessage = FString::Printf(
+                            TEXT("Node index %d ('%s'), mesh index %u: attribute normal element index %u contains "
+                                 "NaN or Inf."),
+                            NodeIndex, *NodeName, SceneMeshIndex, VertexIndex);
+                        return false;
+                    }
                     Section.Normals.Add(FVector(Normal.x, Normal.y, Normal.z));
                 }
             }
@@ -383,6 +432,14 @@ namespace
                 for (unsigned int VertexIndex = 0; VertexIndex < Mesh->mNumVertices; ++VertexIndex)
                 {
                     const aiVector3D &UV = Mesh->mTextureCoords[0][VertexIndex];
+                    if (!IsFiniteAiVector(UV))
+                    {
+                        OutErrorMessage = FString::Printf(
+                            TEXT("Node index %d ('%s'), mesh index %u: attribute UV0 element index %u contains NaN "
+                                 "or Inf."),
+                            NodeIndex, *NodeName, SceneMeshIndex, VertexIndex);
+                        return false;
+                    }
                     Section.UV0Channel.Add(FVector2D(UV.x, UV.y));
                 }
             }
@@ -401,6 +458,14 @@ namespace
                 for (unsigned int VertexIndex = 0; VertexIndex < Mesh->mNumVertices; ++VertexIndex)
                 {
                     const aiColor4D &Color = Mesh->mColors[0][VertexIndex];
+                    if (!IsFiniteAiColor(Color))
+                    {
+                        OutErrorMessage = FString::Printf(
+                            TEXT("Node index %d ('%s'), mesh index %u: attribute vertex color element index %u "
+                                 "contains NaN or Inf."),
+                            NodeIndex, *NodeName, SceneMeshIndex, VertexIndex);
+                        return false;
+                    }
                     Section.VertexColors0.Add(FLinearColor(Color.r, Color.g, Color.b, Color.a));
                 }
             }
@@ -411,6 +476,14 @@ namespace
                 for (unsigned int VertexIndex = 0; VertexIndex < Mesh->mNumVertices; ++VertexIndex)
                 {
                     const aiVector3D &Tangent = Mesh->mTangents[VertexIndex];
+                    if (!IsFiniteAiVector(Tangent))
+                    {
+                        OutErrorMessage = FString::Printf(
+                            TEXT("Node index %d ('%s'), mesh index %u: attribute tangent element index %u contains "
+                                 "NaN or Inf."),
+                            NodeIndex, *NodeName, SceneMeshIndex, VertexIndex);
+                        return false;
+                    }
                     Section.Tangents.Add(FProcMeshTangent(Tangent.x, Tangent.y, Tangent.z));
                 }
             }

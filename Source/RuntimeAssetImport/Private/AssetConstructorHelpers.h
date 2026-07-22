@@ -17,8 +17,15 @@ bool GenerateMaterialInstances(UObject &Owner, const TArray<FLoadedMaterialData>
                                UMaterialInterface *ParentMaterialInterface,
                                TArray<UMaterialInstanceDynamic *> &OutMaterialInstances);
 
-template <typename MeshComponentT> void DestroyCreatedComponents(TArray<MeshComponentT *> &Components)
+template <typename MeshComponentT>
+void DestroyCreatedComponents(AActor *Owner, USceneComponent *OriginalOwnerRoot, MeshComponentT *GeneratedRoot,
+                              const bool bInstalledGeneratedRoot, TArray<MeshComponentT *> &Components)
 {
+    if (bInstalledGeneratedRoot && Owner != nullptr && Owner->GetRootComponent() == GeneratedRoot)
+    {
+        Owner->SetRootComponent(OriginalOwnerRoot);
+    }
+
     for (int32 ComponentIndex = Components.Num() - 1; ComponentIndex >= 0; --ComponentIndex)
     {
         MeshComponentT *Component = Components[ComponentIndex];
@@ -67,6 +74,9 @@ MeshComponentT *ConstructMeshComponentFromMeshData(const FLoadedMeshData &MeshDa
     TArray<MeshComponentT *> MeshComponents;
     MeshComponents.Reserve(MeshData.NodeList.Num());
     int32 ConstructedPrimitiveCount = 0;
+    USceneComponent *OriginalOwnerRoot = nullptr;
+    MeshComponentT *GeneratedRoot = nullptr;
+    bool bInstalledGeneratedRoot = false;
 
     for (int32 NodeIndex = 0; NodeIndex < MeshData.NodeList.Num(); ++NodeIndex)
     {
@@ -75,7 +85,7 @@ MeshComponentT *ConstructMeshComponentFromMeshData(const FLoadedMeshData &MeshDa
         if (MeshComponent == nullptr)
         {
             UE_LOG(LogAssetConstructor, Error, TEXT("Node index %d: failed to create mesh component."), NodeIndex);
-            DestroyCreatedComponents(MeshComponents);
+            DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot, MeshComponents);
             return nullptr;
         }
         MeshComponents.Add(MeshComponent);
@@ -101,7 +111,8 @@ MeshComponentT *ConstructMeshComponentFromMeshData(const FLoadedMeshData &MeshDa
             {
                 UE_LOG(LogAssetConstructor, Error,
                        TEXT("Node index %d: failed to create transient ProceduralMeshComponent."), NodeIndex);
-                DestroyCreatedComponents(MeshComponents);
+                DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot,
+                                         MeshComponents);
                 return nullptr;
             }
             SourceProceduralMesh->SetRelativeTransform(Node.RelativeTransform);
@@ -126,7 +137,8 @@ MeshComponentT *ConstructMeshComponentFromMeshData(const FLoadedMeshData &MeshDa
                     UE_LOG(LogAssetConstructor, Error,
                            TEXT("Node index %d: DynamicMesh conversion produced zero triangles."), NodeIndex);
                     SourceProceduralMesh->DestroyComponent();
-                    DestroyCreatedComponents(MeshComponents);
+                    DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot,
+                                             MeshComponents);
                     return nullptr;
                 }
 
@@ -148,37 +160,49 @@ MeshComponentT *ConstructMeshComponentFromMeshData(const FLoadedMeshData &MeshDa
         if (NodeIndex > 0)
         {
             MeshComponentT *ParentComponent = MeshComponents[Node.ParentNodeIndex];
-            if (ShouldRegisterComponentToOwner)
-            {
-                MeshComponent->SetupAttachment(ParentComponent);
-            }
-            else if (!MeshComponent->AttachToComponent(ParentComponent,
-                                                       FAttachmentTransformRules::KeepRelativeTransform))
-            {
-                UE_LOG(LogAssetConstructor, Error, TEXT("Node index %d: failed to attach to parent index %d."),
-                       NodeIndex, Node.ParentNodeIndex);
-                DestroyCreatedComponents(MeshComponents);
-                return nullptr;
-            }
-        }
-
-        if (ShouldRegisterComponentToOwner)
-        {
-            MeshComponent->RegisterComponent();
-            if (!MeshComponent->IsRegistered())
-            {
-                UE_LOG(LogAssetConstructor, Error, TEXT("Node index %d: component registration failed."), NodeIndex);
-                DestroyCreatedComponents(MeshComponents);
-                return nullptr;
-            }
+            MeshComponent->SetupAttachment(ParentComponent);
         }
     }
 
     if (ConstructedPrimitiveCount <= 0)
     {
         UE_LOG(LogAssetConstructor, Error, TEXT("Mesh construction produced no sections or triangles."));
-        DestroyCreatedComponents(MeshComponents);
+        DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot, MeshComponents);
         return nullptr;
     }
-    return MeshComponents[0];
+
+    GeneratedRoot = MeshComponents[0];
+    if (!ShouldRegisterComponentToOwner)
+    {
+        return GeneratedRoot;
+    }
+
+    OriginalOwnerRoot = Owner->GetRootComponent();
+    if (OriginalOwnerRoot != nullptr)
+    {
+        GeneratedRoot->SetupAttachment(OriginalOwnerRoot);
+    }
+    else
+    {
+        if (!Owner->SetRootComponent(GeneratedRoot))
+        {
+            UE_LOG(LogAssetConstructor, Error, TEXT("Failed to install the generated component as the Owner root."));
+            DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot, MeshComponents);
+            return nullptr;
+        }
+        bInstalledGeneratedRoot = true;
+    }
+
+    for (int32 NodeIndex = 0; NodeIndex < MeshComponents.Num(); ++NodeIndex)
+    {
+        MeshComponentT *MeshComponent = MeshComponents[NodeIndex];
+        MeshComponent->RegisterComponent();
+        if (!MeshComponent->IsRegistered())
+        {
+            UE_LOG(LogAssetConstructor, Error, TEXT("Node index %d: component registration failed."), NodeIndex);
+            DestroyCreatedComponents(Owner, OriginalOwnerRoot, GeneratedRoot, bInstalledGeneratedRoot, MeshComponents);
+            return nullptr;
+        }
+    }
+    return GeneratedRoot;
 }

@@ -203,6 +203,9 @@ $requiredEntries = @(
     'RuntimeAssetImport/Source/ThirdParty/assimp/assimp.Build.cs',
     'RuntimeAssetImport/Source/ThirdParty/assimp/BUILD-INFO.json',
     'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSE',
+    'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/Open3DGC/LICENSE.txt',
+    'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/stb/LICENSE.txt',
+    'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/unzip/MiniZip64_info.txt',
     'RuntimeAssetImport/Source/ThirdParty/assimp/Bin/Win64/assimp-vc143-mt.dll',
     'RuntimeAssetImport/Source/ThirdParty/assimp/Lib/Win64/assimp-vc143-mt.lib',
     'RuntimeAssetImport/README.md',
@@ -224,6 +227,28 @@ try {
         }
     }
 
+    $expectedLicenseEntries = @(
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/assimp/LICENSE',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/Open3DGC/LICENSE.txt',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/clipper/License.txt',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/earcut-hpp/LICENSE',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/openddlparser/LICENSE',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/poly2tri/LICENSE',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/pugixml/LICENSE.md',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/rapidjson/license.txt',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/stb/LICENSE.txt',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/unzip/MiniZip64_info.txt',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/utf8cpp/doc/LICENSE',
+        'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/contrib/zlib/LICENSE'
+    ) | Sort-Object
+    $actualLicenseEntries = @($entries | Where-Object {
+            $_.StartsWith('RuntimeAssetImport/Source/ThirdParty/assimp/LICENSES/',
+                [System.StringComparison]::Ordinal) -and -not $_.EndsWith('/')
+        } | Sort-Object)
+    if ([string]::Join("`n", $actualLicenseEntries) -cne [string]::Join("`n", $expectedLicenseEntries)) {
+        throw "ZIP curated license allowlist mismatch. Expected: $($expectedLicenseEntries -join ', '). Actual: $($actualLicenseEntries -join ', ')."
+    }
+
     $forbiddenPatterns = @(
         '^RuntimeAssetImport/Source/RuntimeAssetImportTest/',
         '^RuntimeAssetImport/BuildAssimpForPlugin\.ps1$',
@@ -237,6 +262,12 @@ try {
         '^RuntimeAssetImport/Intermediate/',
         '^RuntimeAssetImport/Saved/',
         '^RuntimeAssetImport/Build/',
+        '/Source/ThirdParty/assimp/LICENSES/contrib/draco/',
+        '/Source/ThirdParty/assimp/LICENSES/contrib/googletest/',
+        '/Source/ThirdParty/assimp/LICENSES/packaging/',
+        '/Source/ThirdParty/assimp/LICENSES/port/',
+        '/Source/ThirdParty/assimp/LICENSES/test/',
+        '/Source/ThirdParty/assimp/LICENSES/contrib/zlib/contrib/dotzlib/',
         '\.pdb$',
         '(^|/)assimp\.exe$',
         '(^|/)PackedForFab/',

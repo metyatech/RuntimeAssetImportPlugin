@@ -1,6 +1,7 @@
 // Copyright (c) 2026 metyatech. All rights reserved.
 
 #include "AssetConstructor.h"
+#include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Materials/Material.h"
@@ -9,6 +10,8 @@
 #include "Misc/AutomationTest.h"
 #include "Tests/AutomationEditorCommon.h"
 #include "UDynamicMesh.h"
+
+#include <limits>
 
 namespace
 {
@@ -67,12 +70,124 @@ namespace
                                     UMaterialInterface *ParentMaterial, AActor *Owner)
     {
         Test.AddExpectedError(TEXT("LogAssetConstructor:"), EAutomationExpectedErrorFlags::Contains, 2);
+        const int32 InitialComponentCount = Owner != nullptr ? Owner->GetComponents().Num() : 0;
         bool Passed = Test.TestNull(
             *FString::Printf(TEXT("%s should be rejected by ProceduralMesh construction"), *Label),
             UAssetConstructor::ConstructProceduralMeshComponentFromMeshData(MeshData, ParentMaterial, Owner));
+        if (Owner != nullptr)
+        {
+            Passed &= Test.TestEqual(*FString::Printf(TEXT("%s should leave no ProceduralMesh components"), *Label),
+                                     Owner->GetComponents().Num(), InitialComponentCount);
+        }
         Passed &= Test.TestNull(
             *FString::Printf(TEXT("%s should be rejected by DynamicMesh construction"), *Label),
             UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(MeshData, ParentMaterial, Owner));
+        if (Owner != nullptr)
+        {
+            Passed &= Test.TestEqual(*FString::Printf(TEXT("%s should leave no DynamicMesh components"), *Label),
+                                     Owner->GetComponents().Num(), InitialComponentCount);
+        }
+        return Passed;
+    }
+
+    template <typename MeshComponentT>
+    MeshComponentT *ConstructTriangle(UMaterialInterface *ParentMaterial, AActor *Owner)
+    {
+        if constexpr (TypeTests::TAreTypesEqual_V<UDynamicMeshComponent, MeshComponentT>)
+        {
+            return UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(MakeValidTriangleMeshData(),
+                                                                                ParentMaterial, Owner);
+        }
+        else
+        {
+            return UAssetConstructor::ConstructProceduralMeshComponentFromMeshData(MakeValidTriangleMeshData(),
+                                                                                   ParentMaterial, Owner);
+        }
+    }
+
+    template <typename MeshComponentT>
+    bool TestExistingRootTracksOwnerTransform(FAutomationTestBase &Test, const FString &Label)
+    {
+        UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+        AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+        UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+        USceneComponent *ExistingRoot = Owner != nullptr ? NewObject<USceneComponent>(Owner) : nullptr;
+        if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr || ExistingRoot == nullptr)
+        {
+            Test.AddError(TEXT("Could not create the test world, actor, Parent Material, or existing root."));
+            DestroyTestActor(World, Owner);
+            return false;
+        }
+
+        bool Passed = Test.TestTrue(*FString::Printf(TEXT("%s existing root should install"), *Label),
+                                    Owner->SetRootComponent(ExistingRoot));
+        ExistingRoot->RegisterComponent();
+        Passed &= Test.TestTrue(*FString::Printf(TEXT("%s existing root should register"), *Label),
+                                ExistingRoot->IsRegistered());
+
+        const FTransform InitialOwnerTransform(FRotator(10.0, 20.0, 30.0), FVector(100.0, 200.0, 300.0),
+                                               FVector(1.25, 0.75, 1.5));
+        Owner->SetActorTransform(InitialOwnerTransform);
+        ExistingRoot->UpdateComponentToWorld();
+
+        MeshComponentT *Component = ConstructTriangle<MeshComponentT>(ParentMaterial, Owner);
+        Passed &= Test.TestNotNull(*FString::Printf(TEXT("%s should return a component"), *Label), Component);
+        if (Component != nullptr)
+        {
+            Passed &= Test.TestEqual(*FString::Printf(TEXT("%s should attach to the existing root"), *Label),
+                                     Component->GetAttachParent(), ExistingRoot);
+
+            const FTransform UpdatedOwnerTransform(FRotator(-15.0, 45.0, 5.0), FVector(-50.0, 75.0, 125.0),
+                                                   FVector(0.5, 1.25, 2.0));
+            Owner->SetActorTransform(UpdatedOwnerTransform);
+            ExistingRoot->UpdateComponentToWorld();
+            Component->UpdateComponentToWorld();
+
+            Passed &= Test.TestTrue(
+                *FString::Printf(TEXT("%s location should follow the owner root"), *Label),
+                Component->GetComponentLocation().Equals(ExistingRoot->GetComponentLocation(), KINDA_SMALL_NUMBER));
+            Passed &= Test.TestTrue(
+                *FString::Printf(TEXT("%s rotation should follow the owner root"), *Label),
+                Component->GetComponentQuat().Equals(ExistingRoot->GetComponentQuat(), KINDA_SMALL_NUMBER));
+            Passed &= Test.TestTrue(
+                *FString::Printf(TEXT("%s scale should follow the owner root"), *Label),
+                Component->GetComponentScale().Equals(ExistingRoot->GetComponentScale(), KINDA_SMALL_NUMBER));
+            Component->DestroyComponent();
+        }
+
+        Owner->SetRootComponent(nullptr);
+        ExistingRoot->DestroyComponent();
+        DestroyTestActor(World, Owner);
+        return Passed;
+    }
+
+    template <typename MeshComponentT>
+    bool TestOwnerWithoutRootUsesGeneratedRoot(FAutomationTestBase &Test, const FString &Label)
+    {
+        UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+        AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+        UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+        if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+        {
+            Test.AddError(TEXT("Could not create the test world, actor, or plugin Parent Material."));
+            DestroyTestActor(World, Owner);
+            return false;
+        }
+
+        bool Passed = Test.TestNull(*FString::Printf(TEXT("%s owner should start without a root"), *Label),
+                                    Owner->GetRootComponent());
+        MeshComponentT *Component = ConstructTriangle<MeshComponentT>(ParentMaterial, Owner);
+        Passed &= Test.TestNotNull(*FString::Printf(TEXT("%s should return a component"), *Label), Component);
+        if (Component != nullptr)
+        {
+            Passed &= Test.TestEqual(*FString::Printf(TEXT("%s should become the owner root"), *Label),
+                                     Owner->GetRootComponent(), static_cast<USceneComponent *>(Component));
+            Passed &= Test.TestTrue(*FString::Printf(TEXT("%s should register"), *Label), Component->IsRegistered());
+            Owner->SetRootComponent(nullptr);
+            Component->DestroyComponent();
+        }
+
+        DestroyTestActor(World, Owner);
         return Passed;
     }
 } // namespace
@@ -179,6 +294,10 @@ bool FAssetConstructorInvalidMeshDataReturnsFailure::RunTest(const FString &Para
     InvalidData.MaterialList[0].CompressedTextureData.Reset();
     Passed &= TestBothConstructorsReject(*this, TEXT("TextureIsSet with empty texture data"), InvalidData,
                                          ParentMaterial, Owner);
+
+    InvalidData = MakeValidTriangleMeshData();
+    InvalidData.MaterialList[0].ColorStatus = static_cast<EColorStatus>(255);
+    Passed &= TestBothConstructorsReject(*this, TEXT("Invalid ColorStatus"), InvalidData, ParentMaterial, Owner);
 
     DestroyTestActor(World, Owner);
     return Passed;
@@ -328,4 +447,107 @@ bool FAssetConstructorProceduralMeshFromObjFileReturnsSuccess::RunTest(const FSt
     }
     DestroyTestActor(World, Owner);
     return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorInvalidNumericValuesReturnFailure,
+                                 "RuntimeAssetImport.AssetConstructor.InvalidNumericValuesReturnFailure",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorInvalidNumericValuesReturnFailure::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    struct FInvalidNumericCase
+    {
+        const TCHAR *FieldName;
+        TFunction<void(FLoadedMeshData &, float)> Mutate;
+    };
+    const TArray<FInvalidNumericCase> Cases = {
+        {TEXT("Node RelativeTransform translation"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].RelativeTransform.SetTranslation(FVector(Value, 0.0, 0.0)); }},
+        {TEXT("Node RelativeTransform scale"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].RelativeTransform.SetScale3D(FVector(Value, 1.0, 1.0)); }},
+        {TEXT("Node RelativeTransform quaternion"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].RelativeTransform.SetRotation(FQuat(Value, 0.0, 0.0, 1.0)); }},
+        {TEXT("Vertex"),
+         [](FLoadedMeshData &MeshData, const float Value) { MeshData.NodeList[0].Sections[0].Vertices[0].X = Value; }},
+        {TEXT("Normal"),
+         [](FLoadedMeshData &MeshData, const float Value) { MeshData.NodeList[0].Sections[0].Normals[0].X = Value; }},
+        {TEXT("UV"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].Sections[0].UV0Channel[0].X = Value; }},
+        {TEXT("VertexColor"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].Sections[0].VertexColors0[0].R = Value; }},
+        {TEXT("TangentX"), [](FLoadedMeshData &MeshData, const float Value)
+         { MeshData.NodeList[0].Sections[0].Tangents[0].TangentX.X = Value; }},
+        {TEXT("Material Color"),
+         [](FLoadedMeshData &MeshData, const float Value) { MeshData.MaterialList[0].Color.R = Value; }},
+    };
+    const struct
+    {
+        const TCHAR *Name;
+        float Value;
+    } InvalidValues[] = {
+        {TEXT("NaN"), std::numeric_limits<float>::quiet_NaN()},
+        {TEXT("+Inf"), std::numeric_limits<float>::infinity()},
+        {TEXT("-Inf"), -std::numeric_limits<float>::infinity()},
+    };
+
+    bool Passed = true;
+    for (const auto &InvalidValue : InvalidValues)
+    {
+        for (const FInvalidNumericCase &Case : Cases)
+        {
+            FLoadedMeshData InvalidData = MakeValidTriangleMeshData();
+            Case.Mutate(InvalidData, InvalidValue.Value);
+            const FString Label = FString::Printf(TEXT("%s %s"), Case.FieldName, InvalidValue.Name);
+            Passed &= TestBothConstructorsReject(*this, Label, InvalidData, ParentMaterial, Owner);
+        }
+    }
+
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FExistingRootDynamicMeshTracksOwnerTransform,
+                                 "RuntimeAssetImport.AssetConstructor.ExistingRootDynamicMeshTracksOwnerTransform",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FExistingRootDynamicMeshTracksOwnerTransform::RunTest(const FString &Parameters)
+{
+    return TestExistingRootTracksOwnerTransform<UDynamicMeshComponent>(*this, TEXT("DynamicMesh"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FExistingRootProceduralMeshTracksOwnerTransform,
+                                 "RuntimeAssetImport.AssetConstructor.ExistingRootProceduralMeshTracksOwnerTransform",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FExistingRootProceduralMeshTracksOwnerTransform::RunTest(const FString &Parameters)
+{
+    return TestExistingRootTracksOwnerTransform<UProceduralMeshComponent>(*this, TEXT("ProceduralMesh"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorOwnerWithoutRootUsesGeneratedDynamicRoot,
+                                 "RuntimeAssetImport.AssetConstructor.OwnerWithoutRootUsesGeneratedDynamicRoot",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorOwnerWithoutRootUsesGeneratedDynamicRoot::RunTest(const FString &Parameters)
+{
+    return TestOwnerWithoutRootUsesGeneratedRoot<UDynamicMeshComponent>(*this, TEXT("DynamicMesh"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorOwnerWithoutRootUsesGeneratedProceduralRoot,
+                                 "RuntimeAssetImport.AssetConstructor.OwnerWithoutRootUsesGeneratedProceduralRoot",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorOwnerWithoutRootUsesGeneratedProceduralRoot::RunTest(const FString &Parameters)
+{
+    return TestOwnerWithoutRootUsesGeneratedRoot<UProceduralMeshComponent>(*this, TEXT("ProceduralMesh"));
 }

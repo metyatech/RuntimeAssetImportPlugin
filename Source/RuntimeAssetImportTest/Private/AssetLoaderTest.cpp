@@ -63,6 +63,24 @@ namespace
         Passed &= AssertValidLoadedMesh(Test, Label, MeshData);
         return Passed;
     }
+
+    bool LoadMemoryAndAssertSuccess(FAutomationTestBase &Test, const TCHAR *FileName, const TCHAR *Label)
+    {
+        const FString AssetPath = FPaths::Combine(GetTestAssetsDir(), FileName);
+        TArray<uint8> FileBytes;
+        if (!FFileHelper::LoadFileToArray(FileBytes, *AssetPath))
+        {
+            Test.AddError(FString::Printf(TEXT("Could not read test asset: %s"), *AssetPath));
+            return false;
+        }
+
+        ELoadMeshFromAssetDataResult Result = ELoadMeshFromAssetDataResult::Failure;
+        const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(FileBytes, Result);
+        bool Passed = Test.TestEqual(*FString::Printf(TEXT("%s should load successfully"), Label), Result,
+                                     ELoadMeshFromAssetDataResult::Success);
+        Passed &= AssertValidLoadedMesh(Test, Label, MeshData);
+        return Passed;
+    }
 } // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssimpVersionIs605, "RuntimeAssetImport.Assimp.Version.Is605",
@@ -222,17 +240,41 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_ObjTriangle_ReturnsSucce
 
 bool FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
 {
-    const FString ObjPath = FPaths::Combine(GetTestAssetsDir(), TEXT("test_triangle.obj"));
-    TArray<uint8> FileBytes;
-    if (!FFileHelper::LoadFileToArray(FileBytes, *ObjPath))
-    {
-        AddError(FString::Printf(TEXT("Could not read test asset: %s"), *ObjPath));
-        return false;
-    }
+    return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.obj"), TEXT("OBJ bytes"));
+}
 
-    ELoadMeshFromAssetDataResult Result = ELoadMeshFromAssetDataResult::Failure;
-    const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(FileBytes, Result);
-    bool Passed = TestEqual(TEXT("OBJ bytes should load successfully"), Result, ELoadMeshFromAssetDataResult::Success);
-    Passed &= AssertValidLoadedMesh(*this, TEXT("OBJ bytes"), MeshData);
-    return Passed;
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_FbxTriangle_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.FbxTriangle",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FLoadMeshFromAssetData_FbxTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
+{
+    return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.fbx"), TEXT("FBX bytes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_DaeTriangle_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.DaeTriangle",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FLoadMeshFromAssetData_DaeTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
+{
+    return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.dae"), TEXT("DAE bytes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_GltfScene_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.GltfScene",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FLoadMeshFromAssetData_GltfScene_ReturnsSuccess::RunTest(const FString &Parameters)
+{
+    return LoadMemoryAndAssertSuccess(*this, TEXT("test_scene.gltf"), TEXT("glTF bytes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_GlbTriangle_ReturnsSuccess,
+                                 "RuntimeAssetImport.AssetLoader.LoadMeshFromAssetData.GlbTriangle",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FLoadMeshFromAssetData_GlbTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
+{
+    return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.glb"), TEXT("GLB bytes"));
 }

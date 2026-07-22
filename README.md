@@ -6,7 +6,7 @@ Runtime Asset Import is an Unreal Engine code plugin that imports static 3D mesh
 
 ## Supported Environment
 
-- Unreal Engine 5.4 through 5.8, as verified in [MarketplaceListing.md](MarketplaceListing.md)
+- Unreal Engine 5.4, 5.5, 5.7, and 5.8, as verified in [MarketplaceListing.md](MarketplaceListing.md)
 - Windows Win64 editor and packaged applications
 - Static geometry only
 
@@ -22,6 +22,8 @@ Other desktop platforms, mobile platforms, and consoles are not supported by the
 - Diffuse/base color and one embedded texture per material
 - Collision generation on constructed components
 - Assimp 6.0.5 built from the official source tag
+
+The bundled Assimp build includes the FBX, OBJ, glTF/GLB, and Collada importers used by this product. Unrelated importers are disabled.
 
 The plugin intentionally has no StaticMesh construction API, latent or asynchronous API, or URL downloader.
 
@@ -108,15 +110,15 @@ The bundled `/RuntimeAssetImport/AssetImporterMeshMaterial` satisfies this contr
 
 ## Tested File Formats
 
-Automated tests directly import:
+Automated tests cover both file and in-memory import for FBX, OBJ, glTF, GLB, and DAE.
+
+Tested formats:
 
 - FBX
 - OBJ
 - glTF
 - GLB
 - DAE (Collada)
-
-Assimp supports additional formats, but only the formats listed above are claimed as tested for this release.
 
 ## Blueprint API
 

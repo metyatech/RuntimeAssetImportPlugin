@@ -44,6 +44,10 @@ Key features:
 - Collision generation on constructed mesh components
 - Assimp 6.0.5 Win64 binaries built from the official source tag and bundled with the plugin
 
+The bundled Assimp build includes the FBX, OBJ, glTF/GLB, and Collada importers used by this product. Unrelated importers are disabled.
+
+Automated tests cover both file and in-memory import for FBX, OBJ, glTF, GLB, and DAE.
+
 Important limitations:
 
 - Win64 only
@@ -74,7 +78,6 @@ Test Host: https://github.com/metyatech/RuntimeAssetImportSample
 
 - Unreal Engine 5.4
 - Unreal Engine 5.5
-- Unreal Engine 5.6
 - Unreal Engine 5.7
 - Unreal Engine 5.8
 

@@ -13,6 +13,31 @@ namespace
         return ArraySize == 0 || ArraySize == VertexCount;
     }
 
+    bool IsFiniteVector(const FVector &Value)
+    {
+        return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+    }
+
+    bool IsFiniteVector2D(const FVector2D &Value) { return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y); }
+
+    bool IsFiniteColor(const FLinearColor &Value)
+    {
+        return FMath::IsFinite(Value.R) && FMath::IsFinite(Value.G) && FMath::IsFinite(Value.B) &&
+               FMath::IsFinite(Value.A);
+    }
+
+    bool IsFiniteQuaternion(const FQuat &Value)
+    {
+        return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z) &&
+               FMath::IsFinite(Value.W);
+    }
+
+    bool IsFiniteTransform(const FTransform &Value)
+    {
+        return IsFiniteVector(Value.GetTranslation()) && IsFiniteVector(Value.GetScale3D()) &&
+               IsFiniteQuaternion(Value.GetRotation());
+    }
+
     bool HasMaterialParameter(const UMaterialInterface &MaterialInterface, const EMaterialParameterType ParameterType,
                               const FName ParameterName)
     {
@@ -60,10 +85,11 @@ bool ValidateMeshDataForConstruction(const FLoadedMeshData &MeshData, FString &O
                                 NodeIndex, NodeIndex - 1, Node.ParentNodeIndex);
             return false;
         }
-        if (Node.RelativeTransform.ContainsNaN())
+        if (!IsFiniteTransform(Node.RelativeTransform))
         {
-            OutErrorMessage =
-                FString::Printf(TEXT("Node index %d field RelativeTransform contains NaN or Inf."), NodeIndex);
+            OutErrorMessage = FString::Printf(
+                TEXT("Node index %d, section index %d field RelativeTransform element index %d contains NaN or Inf."),
+                NodeIndex, INDEX_NONE, 0);
             return false;
         }
 
@@ -131,12 +157,87 @@ bool ValidateMeshDataForConstruction(const FLoadedMeshData &MeshData, FString &O
                     NodeIndex, SectionIndex, Section.MaterialIndex, MeshData.MaterialList.Num());
                 return false;
             }
+
+            for (int32 ElementIndex = 0; ElementIndex < Section.Vertices.Num(); ++ElementIndex)
+            {
+                if (!IsFiniteVector(Section.Vertices[ElementIndex]))
+                {
+                    OutErrorMessage = FString::Printf(
+                        TEXT("Node index %d, section index %d field Vertices element index %d contains NaN or Inf."),
+                        NodeIndex, SectionIndex, ElementIndex);
+                    return false;
+                }
+            }
+            for (int32 ElementIndex = 0; ElementIndex < Section.Normals.Num(); ++ElementIndex)
+            {
+                if (!IsFiniteVector(Section.Normals[ElementIndex]))
+                {
+                    OutErrorMessage = FString::Printf(
+                        TEXT("Node index %d, section index %d field Normals element index %d contains NaN or Inf."),
+                        NodeIndex, SectionIndex, ElementIndex);
+                    return false;
+                }
+            }
+            for (int32 ElementIndex = 0; ElementIndex < Section.UV0Channel.Num(); ++ElementIndex)
+            {
+                if (!IsFiniteVector2D(Section.UV0Channel[ElementIndex]))
+                {
+                    OutErrorMessage = FString::Printf(
+                        TEXT("Node index %d, section index %d field UV0Channel element index %d contains NaN or Inf."),
+                        NodeIndex, SectionIndex, ElementIndex);
+                    return false;
+                }
+            }
+            for (int32 ElementIndex = 0; ElementIndex < Section.VertexColors0.Num(); ++ElementIndex)
+            {
+                if (!IsFiniteColor(Section.VertexColors0[ElementIndex]))
+                {
+                    OutErrorMessage = FString::Printf(
+                        TEXT("Node index %d, section index %d field VertexColors0 element index %d contains NaN or "
+                             "Inf."),
+                        NodeIndex, SectionIndex, ElementIndex);
+                    return false;
+                }
+            }
+            for (int32 ElementIndex = 0; ElementIndex < Section.Tangents.Num(); ++ElementIndex)
+            {
+                if (!IsFiniteVector(Section.Tangents[ElementIndex].TangentX))
+                {
+                    OutErrorMessage = FString::Printf(
+                        TEXT("Node index %d, section index %d field Tangents.TangentX element index %d contains NaN "
+                             "or Inf."),
+                        NodeIndex, SectionIndex, ElementIndex);
+                    return false;
+                }
+            }
         }
     }
 
     for (int32 MaterialIndex = 0; MaterialIndex < MeshData.MaterialList.Num(); ++MaterialIndex)
     {
         const FLoadedMaterialData &MaterialData = MeshData.MaterialList[MaterialIndex];
+        switch (MaterialData.ColorStatus)
+        {
+        case EColorStatus::None:
+        case EColorStatus::ColorIsSet:
+        case EColorStatus::TextureIsSet:
+        case EColorStatus::TextureWasSetButError:
+            break;
+        default:
+            OutErrorMessage = FString::Printf(
+                TEXT("Material index %d, node index %d, section index %d field ColorStatus element index %d is "
+                     "invalid."),
+                MaterialIndex, INDEX_NONE, INDEX_NONE, 0);
+            return false;
+        }
+        if (!IsFiniteColor(MaterialData.Color))
+        {
+            OutErrorMessage = FString::Printf(
+                TEXT("Material index %d, node index %d, section index %d field Color element index %d contains NaN "
+                     "or Inf."),
+                MaterialIndex, INDEX_NONE, INDEX_NONE, 0);
+            return false;
+        }
         if (MaterialData.ColorStatus == EColorStatus::TextureIsSet && MaterialData.CompressedTextureData.IsEmpty())
         {
             OutErrorMessage = FString::Printf(

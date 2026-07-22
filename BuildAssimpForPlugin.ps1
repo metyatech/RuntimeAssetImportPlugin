@@ -290,6 +290,67 @@ function Copy-Directory
     }
 }
 
+function Move-DirectoryWithRetry
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$AllowedRoot
+    )
+
+    $FullSource = [System.IO.Path]::GetFullPath($Source)
+    $FullDestination = [System.IO.Path]::GetFullPath($Destination)
+    $FullAllowedRoot = [System.IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\') + '\'
+    foreach ($Candidate in @($FullSource, $FullDestination))
+    {
+        if (-not $Candidate.StartsWith($FullAllowedRoot, [System.StringComparison]::OrdinalIgnoreCase))
+        {
+            throw "Refusing to move a directory outside the allowed root: $Candidate"
+        }
+    }
+    if (-not [System.IO.Directory]::Exists($FullSource))
+    {
+        throw "Required move source directory does not exist: $FullSource"
+    }
+    if ([System.IO.Directory]::Exists($FullDestination))
+    {
+        throw "Move destination already exists: $FullDestination"
+    }
+
+    $MaximumAttempts = 5
+    for ($Attempt = 1; $Attempt -le $MaximumAttempts; $Attempt++)
+    {
+        try
+        {
+            [System.IO.Directory]::Move($FullSource, $FullDestination)
+            if ([System.IO.Directory]::Exists($FullSource) -or
+                -not [System.IO.Directory]::Exists($FullDestination))
+            {
+                throw "Directory move did not reach the expected final state: $FullDestination"
+            }
+            return
+        }
+        catch [System.UnauthorizedAccessException]
+        {
+            if ($Attempt -eq $MaximumAttempts)
+            {
+                throw
+            }
+        }
+        catch [System.IO.IOException]
+        {
+            if ($Attempt -eq $MaximumAttempts)
+            {
+                throw
+            }
+        }
+
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.Threading.Thread]::Sleep(250)
+    }
+}
+
 function Get-Sha256
 {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -370,6 +431,114 @@ function Assert-RequiredFile
     {
         throw "Required file does not exist: $Path"
     }
+}
+
+function Get-SortedUniqueStrings
+{
+    param([Parameter(Mandatory = $true)][string[]]$Values)
+
+    $SortedValues = [string[]]@($Values)
+    [System.Array]::Sort($SortedValues, [System.StringComparer]::Ordinal)
+    $UniqueValues = New-Object System.Collections.Generic.List[string]
+    foreach ($Value in $SortedValues)
+    {
+        if ($UniqueValues.Count -eq 0 -or $UniqueValues[$UniqueValues.Count - 1] -cne $Value)
+        {
+            $UniqueValues.Add($Value)
+        }
+    }
+    return $UniqueValues.ToArray()
+}
+
+function Assert-ExactStringSet
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string[]]$Actual,
+        [Parameter(Mandatory = $true)][string[]]$Expected
+    )
+
+    $ActualSorted = @(Get-SortedUniqueStrings -Values $Actual)
+    $ExpectedSorted = @(Get-SortedUniqueStrings -Values $Expected)
+    if ([string]::Join("`n", $ActualSorted) -cne [string]::Join("`n", $ExpectedSorted))
+    {
+        throw "$Label did not match the required set. Expected: $($ExpectedSorted -join ', '). Actual: $($ActualSorted -join ', ')."
+    }
+}
+
+function Get-EnabledFormats
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigureOutput,
+        [Parameter(Mandatory = $true)][ValidateSet('importer', 'exporter')][string]$FormatType
+    )
+
+    $Pattern = "(?im)^\s*--\s*Enabled $FormatType formats:\s*(.*?)\s*$"
+    $Match = [System.Text.RegularExpressions.Regex]::Match($ConfigureOutput, $Pattern)
+    if (-not $Match.Success)
+    {
+        throw "CMake output did not contain the Enabled $FormatType formats line."
+    }
+    return @($Match.Groups[1].Value -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { $_.ToUpperInvariant() })
+}
+
+function Get-AssimpExportIds
+{
+    param([Parameter(Mandatory = $true)][string]$ListExportOutput)
+
+    $ExportIds = New-Object System.Collections.Generic.List[string]
+    foreach ($Line in ($ListExportOutput -split "`r?`n"))
+    {
+        if ($Line -match '^\s*([a-z][a-z0-9]*)\b')
+        {
+            $ExportIds.Add($Matches[1])
+        }
+    }
+    return @(Get-SortedUniqueStrings -Values $ExportIds.ToArray())
+}
+
+function Write-ExtractedLicense
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    $NormalizedText = [System.Text.RegularExpressions.Regex]::Replace($Text, "`r`n|`r", "`n")
+    if (-not $NormalizedText.EndsWith("`n", [System.StringComparison]::Ordinal))
+    {
+        $NormalizedText += "`n"
+    }
+    [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Destination))
+    [System.IO.File]::WriteAllText($Destination, $NormalizedText, $Utf8NoBom)
+}
+
+function Disable-AssimpDumpCommandInGeneratedProject
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string]$BuildDirectory
+    )
+
+    $ProjectPath = Join-Path $BuildDirectory 'tools\assimp_cmd\assimp_cmd.vcxproj'
+    Assert-RequiredFile -Path $ProjectPath
+    $WriteDumpSource = Join-Path $SourceDirectory 'tools\assimp_cmd\WriteDump.cpp'
+    $ProjectText = [System.IO.File]::ReadAllText($ProjectPath)
+    $Needle = "    <ClCompile Include=`"$WriteDumpSource`" />"
+    if ($ProjectText.IndexOf($Needle, [System.StringComparison]::Ordinal) -lt 0 -or
+        $ProjectText.IndexOf($Needle, [System.StringComparison]::Ordinal) -ne
+        $ProjectText.LastIndexOf($Needle, [System.StringComparison]::Ordinal))
+    {
+        throw 'Generated assimp_cmd project did not contain exactly one expected WriteDump.cpp item.'
+    }
+    $Replacement = @(
+        "    <ClCompile Include=`"$WriteDumpSource`">",
+        '      <PreprocessorDefinitions>ASSIMP_BUILD_NO_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>',
+        '    </ClCompile>'
+    ) -join "`r`n"
+    $UpdatedProjectText = $ProjectText.Replace($Needle, $Replacement)
+    [System.IO.File]::WriteAllText($ProjectPath, $UpdatedProjectText, $Utf8NoBom)
 }
 
 try
@@ -477,8 +646,18 @@ try
         [ordered]@{ Name = 'ASSIMP_WARNINGS_AS_ERRORS'; Value = 'ON' },
         [ordered]@{ Name = 'ASSIMP_HUNTER_ENABLED'; Value = 'OFF' },
         [ordered]@{ Name = 'ASSIMP_NO_EXPORT'; Value = 'OFF' },
-        [ordered]@{ Name = 'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT'; Value = 'ON' },
-        [ordered]@{ Name = 'ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT'; Value = 'OFF' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_COLLADA_IMPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_FBX_IMPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_OBJ_IMPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_GLTF_IMPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT'; Value = 'OFF' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_COLLADA_EXPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_FBX_EXPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_GLTF_EXPORTER'; Value = 'ON' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_VRML_IMPORTER'; Value = 'OFF' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_3MF_IMPORTER'; Value = 'OFF' },
+        [ordered]@{ Name = 'ASSIMP_BUILD_3MF_EXPORTER'; Value = 'OFF' },
         [ordered]@{ Name = 'ASSIMP_BUILD_DRACO'; Value = 'OFF' },
         [ordered]@{ Name = 'ASSIMP_BUILD_USD_IMPORTER'; Value = 'OFF' },
         [ordered]@{ Name = 'ASSIMP_BUILD_NONFREE_C4D_IMPORTER'; Value = 'OFF' },
@@ -516,7 +695,38 @@ try
         $ConfigureArguments.Add(("-D{0}={1}" -f $OptionRecord.Name, $OptionValue))
     }
 
-    [void](Invoke-NativeCommand -FilePath $CMakePath -Arguments $ConfigureArguments.ToArray())
+    $ConfigureResult = Invoke-NativeCommand -FilePath $CMakePath -Arguments $ConfigureArguments.ToArray()
+    $ConfigureOutput = $ConfigureResult.StandardOutput + "`n" + $ConfigureResult.StandardError
+    $ParsedEnabledImporters = @(Get-EnabledFormats -ConfigureOutput $ConfigureOutput -FormatType 'importer')
+    $ParsedEnabledExporters = @(Get-EnabledFormats -ConfigureOutput $ConfigureOutput -FormatType 'exporter')
+    $EnabledImporters = @('COLLADA', 'FBX', 'GLTF', 'OBJ')
+    $EnabledExporters = @('COLLADA', 'FBX', 'GLTF')
+    Assert-ExactStringSet -Label 'Enabled importer formats' -Actual $ParsedEnabledImporters `
+        -Expected $EnabledImporters
+    Assert-ExactStringSet -Label 'Enabled exporter formats' -Actual $ParsedEnabledExporters `
+        -Expected $EnabledExporters
+
+    $DependencySourceRoot = Join-Path $BuildDirectory '_deps'
+    if ([System.IO.Directory]::Exists($DependencySourceRoot))
+    {
+        $FetchedSourceDirectories = [System.IO.Directory]::GetDirectories(
+            $DependencySourceRoot, '*-src', [System.IO.SearchOption]::TopDirectoryOnly)
+        if ($FetchedSourceDirectories.Length -gt 0)
+        {
+            throw "CMake fetched external source repositories: $($FetchedSourceDirectories -join ', ')"
+        }
+    }
+    foreach ($ForbiddenFetchDirectory in @(
+            (Join-Path $BuildDirectory '_deps\meshlab_repo-src'),
+            (Join-Path $BuildDirectory '_deps\tinyusdz_repo-src')))
+    {
+        if ([System.IO.Directory]::Exists($ForbiddenFetchDirectory))
+        {
+            throw "Forbidden external repository was fetched: $ForbiddenFetchDirectory"
+        }
+    }
+
+    Disable-AssimpDumpCommandInGeneratedProject -SourceDirectory $SourceDirectory -BuildDirectory $BuildDirectory
 
     $CompilerConfigurationFiles = [System.IO.Directory]::GetFiles(
         $BuildDirectory, 'CMakeCXXCompiler.cmake', [System.IO.SearchOption]::AllDirectories)
@@ -538,6 +748,13 @@ try
     [void](Invoke-NativeCommand -FilePath $CMakePath -Arguments $BuildArguments)
     [void](Invoke-NativeCommand -FilePath $CMakePath -Arguments @(
             '--install', $BuildDirectory, '--config', $Configuration))
+
+    $PostBuildStatusResult = Invoke-NativeCommand -FilePath $GitPath `
+        -Arguments @('-C', $SourceDirectory, 'status', '--short')
+    if (-not [string]::IsNullOrWhiteSpace($PostBuildStatusResult.StandardOutput))
+    {
+        throw 'The Assimp source tree was modified during the build.'
+    }
 
     $InstalledDll = Join-Path $InstallDirectory "bin\$AssimpDllName"
     $InstalledLib = Join-Path $InstallDirectory "lib\$AssimpLibName"
@@ -580,13 +797,9 @@ try
 
     $ListExportResult = Invoke-NativeCommand -FilePath $AssimpExe -Arguments @('listexport') `
         -WorkingDirectory (Split-Path -Parent $AssimpExe)
-    foreach ($ExportId in @('fbx', 'collada', 'glb2'))
-    {
-        if ($ListExportResult.StandardOutput -notmatch ("(?m)^\s*{0}\b" -f [regex]::Escape($ExportId)))
-        {
-            throw "assimp.exe listexport does not contain required export ID: $ExportId"
-        }
-    }
+    $ExportIds = @(Get-AssimpExportIds -ListExportOutput $ListExportResult.StandardOutput)
+    Assert-ExactStringSet -Label 'assimp.exe listexport IDs' -Actual $ExportIds `
+        -Expected @('collada', 'fbx', 'fbxa', 'gltf', 'glb', 'gltf2', 'glb2')
 
     $ListExtensionResult = Invoke-NativeCommand -FilePath $AssimpExe -Arguments @('listext') `
         -WorkingDirectory (Split-Path -Parent $AssimpExe)
@@ -691,30 +904,123 @@ try
         (Join-Path $PayloadHeaders 'revision.h'), $NormalizedRevisionText, $Utf8NoBom)
     [System.IO.File]::Copy($SourceLicense, (Join-Path $PayloadAssimpRoot 'LICENSE'), $true)
 
-    $SourceRootWithSeparator = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\') + '\'
-    $LicenseSourceFiles = New-Object System.Collections.Generic.List[string]
-    foreach ($CandidateLicense in [System.IO.Directory]::EnumerateFiles(
-            $SourceDirectory, '*', [System.IO.SearchOption]::AllDirectories))
+    $LicenseCopyRecords = @(
+        [ordered]@{ Source = 'LICENSE'; Destination = 'assimp/LICENSE' },
+        [ordered]@{ Source = 'contrib/clipper/License.txt'; Destination = 'contrib/clipper/License.txt' },
+        [ordered]@{ Source = 'contrib/earcut-hpp/LICENSE'; Destination = 'contrib/earcut-hpp/LICENSE' },
+        [ordered]@{ Source = 'contrib/openddlparser/LICENSE'; Destination = 'contrib/openddlparser/LICENSE' },
+        [ordered]@{ Source = 'contrib/poly2tri/LICENSE'; Destination = 'contrib/poly2tri/LICENSE' },
+        [ordered]@{ Source = 'contrib/pugixml/LICENSE.md'; Destination = 'contrib/pugixml/LICENSE.md' },
+        [ordered]@{ Source = 'contrib/rapidjson/license.txt'; Destination = 'contrib/rapidjson/license.txt' },
+        [ordered]@{ Source = 'contrib/unzip/MiniZip64_info.txt'; Destination = 'contrib/unzip/MiniZip64_info.txt' },
+        [ordered]@{ Source = 'contrib/utf8cpp/doc/LICENSE'; Destination = 'contrib/utf8cpp/doc/LICENSE' },
+        [ordered]@{ Source = 'contrib/zlib/LICENSE'; Destination = 'contrib/zlib/LICENSE' }
+    )
+    foreach ($LicenseCopyRecord in $LicenseCopyRecords)
     {
-        $CandidateRelative = $CandidateLicense.Substring($SourceRootWithSeparator.Length)
-        if ($CandidateRelative.StartsWith('.git\', [System.StringComparison]::OrdinalIgnoreCase))
-        {
-            continue
-        }
-        if ([System.IO.Path]::GetFileName($CandidateLicense) -match '^(?i:LICENSE|COPYING|COPYRIGHT|NOTICE).*')
-        {
-            $LicenseSourceFiles.Add($CandidateLicense)
-        }
-    }
-    $LicenseSourceFileArray = $LicenseSourceFiles.ToArray()
-    [System.Array]::Sort($LicenseSourceFileArray, [System.StringComparer]::Ordinal)
-    foreach ($LicenseSourceFile in $LicenseSourceFileArray)
-    {
-        $LicenseRelativePath = $LicenseSourceFile.Substring($SourceRootWithSeparator.Length)
-        $LicenseDestination = Join-Path $PayloadLicenses $LicenseRelativePath
+        $LicenseSource = Join-Path $SourceDirectory $LicenseCopyRecord.Source
+        $LicenseDestination = Join-Path $PayloadLicenses $LicenseCopyRecord.Destination
+        Assert-RequiredFile -Path $LicenseSource
         [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($LicenseDestination))
-        [System.IO.File]::Copy($LicenseSourceFile, $LicenseDestination, $true)
+        [System.IO.File]::Copy($LicenseSource, $LicenseDestination, $true)
     }
+
+    $Open3DgcSource = Join-Path $SourceDirectory 'contrib/Open3DGC/o3dgcCommon.h'
+    Assert-RequiredFile -Path $Open3DgcSource
+    $Open3DgcSourceText = [System.IO.File]::ReadAllText($Open3DgcSource)
+    $Open3DgcStart = $Open3DgcSourceText.IndexOf('/*', [System.StringComparison]::Ordinal)
+    if ($Open3DgcStart -lt 0 -or -not [string]::IsNullOrWhiteSpace($Open3DgcSourceText.Substring(0, $Open3DgcStart)))
+    {
+        throw 'Open3DGC source does not begin with the expected license comment.'
+    }
+    $Open3DgcEnd = $Open3DgcSourceText.IndexOf('*/', $Open3DgcStart, [System.StringComparison]::Ordinal)
+    if ($Open3DgcEnd -lt 0)
+    {
+        throw 'Open3DGC source license comment is not terminated.'
+    }
+    $Open3DgcLicenseText = $Open3DgcSourceText.Substring($Open3DgcStart, $Open3DgcEnd - $Open3DgcStart + 2)
+    foreach ($RequiredText in @('Copyright (c) 2013 Khaled Mammou', 'Permission is hereby granted'))
+    {
+        if (-not $Open3DgcLicenseText.Contains($RequiredText))
+        {
+            throw "Open3DGC license extraction is missing required text: $RequiredText"
+        }
+    }
+    Write-ExtractedLicense -Text $Open3DgcLicenseText `
+        -Destination (Join-Path $PayloadLicenses 'contrib/Open3DGC/LICENSE.txt')
+
+    $StbSource = Join-Path $SourceDirectory 'contrib/stb/stb_image.h'
+    Assert-RequiredFile -Path $StbSource
+    $StbSourceText = [System.IO.File]::ReadAllText($StbSource)
+    $StbLicenseMarker = 'This software is available under 2 licenses'
+    $StbStart = $StbSourceText.IndexOf($StbLicenseMarker, [System.StringComparison]::Ordinal)
+    if ($StbStart -lt 0)
+    {
+        throw 'stb source does not contain the dual-license marker.'
+    }
+    $StbEnd = $StbSourceText.IndexOf('*/', $StbStart, [System.StringComparison]::Ordinal)
+    if ($StbEnd -lt 0)
+    {
+        throw 'stb dual-license block is not terminated.'
+    }
+    $StbLicenseText = $StbSourceText.Substring($StbStart, $StbEnd - $StbStart + 2)
+    foreach ($RequiredText in @(
+            'ALTERNATIVE A - MIT License',
+            'Copyright (c) 2017 Sean Barrett',
+            'ALTERNATIVE B - Public Domain'))
+    {
+        if (-not $StbLicenseText.Contains($RequiredText))
+        {
+            throw "stb license extraction is missing required text: $RequiredText"
+        }
+    }
+    Write-ExtractedLicense -Text $StbLicenseText `
+        -Destination (Join-Path $PayloadLicenses 'contrib/stb/LICENSE.txt')
+
+    $ExpectedThirdPartyLicenseFiles = @(
+        'LICENSES/assimp/LICENSE',
+        'LICENSES/contrib/Open3DGC/LICENSE.txt',
+        'LICENSES/contrib/clipper/License.txt',
+        'LICENSES/contrib/earcut-hpp/LICENSE',
+        'LICENSES/contrib/openddlparser/LICENSE',
+        'LICENSES/contrib/poly2tri/LICENSE',
+        'LICENSES/contrib/pugixml/LICENSE.md',
+        'LICENSES/contrib/rapidjson/license.txt',
+        'LICENSES/contrib/stb/LICENSE.txt',
+        'LICENSES/contrib/unzip/MiniZip64_info.txt',
+        'LICENSES/contrib/utf8cpp/doc/LICENSE',
+        'LICENSES/contrib/zlib/LICENSE'
+    )
+    $ThirdPartyLicenseFiles = New-Object System.Collections.Generic.List[string]
+    foreach ($LicenseFile in [System.IO.Directory]::GetFiles(
+            $PayloadLicenses, '*', [System.IO.SearchOption]::AllDirectories))
+    {
+        $RelativeLicensePath = (Get-RelativePath -BasePath $PayloadAssimpRoot -Path $LicenseFile).Replace('\', '/')
+        $ThirdPartyLicenseFiles.Add($RelativeLicensePath)
+    }
+    $ThirdPartyLicenseFileArray = @(Get-SortedUniqueStrings -Values $ThirdPartyLicenseFiles.ToArray())
+    Assert-ExactStringSet -Label 'Curated third-party license files' -Actual $ThirdPartyLicenseFileArray `
+        -Expected $ExpectedThirdPartyLicenseFiles
+
+    $ThirdPartyNoticesPath = Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.md'
+    Assert-RequiredFile -Path $ThirdPartyNoticesPath
+    $ThirdPartyNoticesText = [System.IO.File]::ReadAllText($ThirdPartyNoticesPath)
+    $NoticeInventoryMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $ThirdPartyNoticesText,
+        '(?s)<!-- BEGIN ASSIMP LICENSE FILES -->(.*?)<!-- END ASSIMP LICENSE FILES -->')
+    if (-not $NoticeInventoryMatch.Success)
+    {
+        throw 'THIRD_PARTY_NOTICES.md does not contain the curated license inventory markers.'
+    }
+    $NoticeLicenseFiles = New-Object System.Collections.Generic.List[string]
+    foreach ($NoticeLicenseMatch in [System.Text.RegularExpressions.Regex]::Matches(
+            $NoticeInventoryMatch.Groups[1].Value,
+            '`Source/ThirdParty/assimp/(LICENSES/[^`]+)`'))
+    {
+        $NoticeLicenseFiles.Add($NoticeLicenseMatch.Groups[1].Value)
+    }
+    Assert-ExactStringSet -Label 'THIRD_PARTY_NOTICES.md license files' -Actual $NoticeLicenseFiles.ToArray() `
+        -Expected $ThirdPartyLicenseFileArray
 
     $PayloadDll = Join-Path $PayloadBin $AssimpDllName
     $PayloadLibFile = Join-Path $PayloadLib $AssimpLibName
@@ -736,6 +1042,11 @@ try
         CMakeVersion = $CMakeVersion
         MsvcCompilerVersion = $MsvcCompilerVersion
         CMakeOptions = $CMakeOptionRecords
+        EnabledImporters = $EnabledImporters
+        EnabledExporters = $EnabledExporters
+        ThirdPartyLicenseFiles = $ThirdPartyLicenseFileArray
+        AssimpCommandBuildWorkaround =
+            'The generated assimp_cmd project compiles only WriteDump.cpp with ASSIMP_BUILD_NO_EXPORT because Assimp 6.0.5 otherwise links disabled ASSBIN and ASSXML dump writers. The Assimp source tree is unchanged.'
         Dll = [ordered]@{
             FileName = $AssimpDllName
             Size = $DllInfo.Length
@@ -831,9 +1142,11 @@ try
         }
         Copy-Directory -Source $PayloadAssimpRoot -Destination $ReplacementAssimpRoot
 
-        [System.IO.Directory]::Move($AuthoritativeAssimpRoot, $BackupAssimpRoot)
+        Move-DirectoryWithRetry -Source $AuthoritativeAssimpRoot -Destination $BackupAssimpRoot `
+            -AllowedRoot $ThirdPartyRoot
         $AuthoritativeMoved = $true
-        [System.IO.Directory]::Move($ReplacementAssimpRoot, $AuthoritativeAssimpRoot)
+        Move-DirectoryWithRetry -Source $ReplacementAssimpRoot -Destination $AuthoritativeAssimpRoot `
+            -AllowedRoot $ThirdPartyRoot
 
         $TestAssetsRoot = Join-Path $PSScriptRoot 'Source\RuntimeAssetImportTest\TestAssets'
         foreach ($GeneratedAssetRecord in $GeneratedAssetRecords)
@@ -860,7 +1173,8 @@ try
             }
             if ([System.IO.Directory]::Exists($BackupAssimpRoot))
             {
-                [System.IO.Directory]::Move($BackupAssimpRoot, $AuthoritativeAssimpRoot)
+                Move-DirectoryWithRetry -Source $BackupAssimpRoot -Destination $AuthoritativeAssimpRoot `
+                    -AllowedRoot $ThirdPartyRoot
             }
         }
         throw
