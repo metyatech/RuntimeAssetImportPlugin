@@ -1,13 +1,18 @@
 // Copyright (c) 2026 metyatech. All rights reserved.
 
 #include "AssetConstructor.h"
+#include "AssetImportLimits.h"
+#include "AssetLoader.h"
 #include "Components/SceneComponent.h"
+#include "Engine/Texture.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "MaterialDomain.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
 #include "Tests/AutomationEditorCommon.h"
 #include "UDynamicMesh.h"
 
@@ -103,6 +108,97 @@ namespace
             return UAssetConstructor::ConstructProceduralMeshComponentFromMeshData(MakeValidTriangleMeshData(),
                                                                                    ParentMaterial, Owner);
         }
+    }
+
+    template <typename MeshComponentT>
+    MeshComponentT *ConstructMaterialTestMesh(const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterial,
+                                              AActor *Owner)
+    {
+        if constexpr (TypeTests::TAreTypesEqual_V<UDynamicMeshComponent, MeshComponentT>)
+        {
+            return UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(MeshData, ParentMaterial, Owner);
+        }
+        else
+        {
+            return UAssetConstructor::ConstructProceduralMeshComponentFromMeshData(MeshData, ParentMaterial, Owner);
+        }
+    }
+
+    template <typename MeshComponentT>
+    bool VerifyConstructorMaterialParameters(FAutomationTestBase &Test, const FString &Label,
+                                             const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterial,
+                                             AActor *Owner, const EColorStatus ExpectedStatus,
+                                             const FLinearColor &ExpectedColor)
+    {
+        MeshComponentT *Component = ConstructMaterialTestMesh<MeshComponentT>(MeshData, ParentMaterial, Owner);
+        bool Passed = Test.TestNotNull(*FString::Printf(TEXT("%s should construct"), *Label), Component);
+        if (Component == nullptr)
+        {
+            return false;
+        }
+
+        TArray<MeshComponentT *> CreatedComponents;
+        Owner->GetComponents<MeshComponentT>(CreatedComponents);
+        UMaterialInstanceDynamic *MaterialInstance = nullptr;
+        for (MeshComponentT *CreatedComponent : CreatedComponents)
+        {
+            for (int32 MaterialSlot = 0; MaterialSlot < CreatedComponent->GetNumMaterials(); ++MaterialSlot)
+            {
+                MaterialInstance = Cast<UMaterialInstanceDynamic>(CreatedComponent->GetMaterial(MaterialSlot));
+                if (MaterialInstance != nullptr)
+                {
+                    break;
+                }
+            }
+            if (MaterialInstance != nullptr)
+            {
+                break;
+            }
+        }
+        Passed &= Test.TestNotNull(*FString::Printf(TEXT("%s should use a MID"), *Label), MaterialInstance);
+        if (MaterialInstance != nullptr)
+        {
+            const float ActualBlend =
+                MaterialInstance->K2_GetScalarParameterValue(TEXT("TextureBlendIntensityForBaseColor"));
+            const float ExpectedBlend = ExpectedStatus == EColorStatus::TextureIsSet ? 1.0f : 0.0f;
+            Passed &= Test.TestTrue(*FString::Printf(TEXT("%s blend scalar should match"), *Label),
+                                    FMath::IsNearlyEqual(ActualBlend, ExpectedBlend));
+            if (ExpectedStatus == EColorStatus::ColorIsSet)
+            {
+                const FLinearColor ActualColor = MaterialInstance->K2_GetVectorParameterValue(TEXT("BaseColor4"));
+                Passed &= Test.TestTrue(*FString::Printf(TEXT("%s color vector should match"), *Label),
+                                        ActualColor.Equals(ExpectedColor, KINDA_SMALL_NUMBER));
+            }
+            else
+            {
+                UTexture *ActualTexture = MaterialInstance->K2_GetTextureParameterValue(TEXT("BaseColorTexture"));
+                Passed &= Test.TestNotNull(*FString::Printf(TEXT("%s texture parameter should be set"), *Label),
+                                           ActualTexture);
+            }
+        }
+
+        if (Owner->GetRootComponent() != nullptr &&
+            CreatedComponents.Contains(Cast<MeshComponentT>(Owner->GetRootComponent())))
+        {
+            Owner->SetRootComponent(nullptr);
+        }
+        for (int32 ComponentIndex = CreatedComponents.Num() - 1; ComponentIndex >= 0; --ComponentIndex)
+        {
+            CreatedComponents[ComponentIndex]->DestroyComponent();
+        }
+        return Passed;
+    }
+
+    bool VerifyBothConstructorMaterialParameters(FAutomationTestBase &Test, const FString &Label,
+                                                 const FLoadedMeshData &MeshData, UMaterialInterface *ParentMaterial,
+                                                 AActor *Owner, const EColorStatus ExpectedStatus,
+                                                 const FLinearColor &ExpectedColor = FLinearColor::Transparent)
+    {
+        bool Passed = VerifyConstructorMaterialParameters<UProceduralMeshComponent>(
+            Test, Label + TEXT(" ProceduralMesh"), MeshData, ParentMaterial, Owner, ExpectedStatus, ExpectedColor);
+        Passed &= VerifyConstructorMaterialParameters<UDynamicMeshComponent>(
+            Test, Label + TEXT(" DynamicMesh"), MeshData, ParentMaterial, Owner, ExpectedStatus, ExpectedColor);
+        return Passed;
     }
 
     template <typename MeshComponentT>
@@ -512,6 +608,157 @@ bool FAssetConstructorInvalidNumericValuesReturnFailure::RunTest(const FString &
         }
     }
 
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorInvalidQuaternionReturnsFailure,
+                                 "RuntimeAssetImport.AssetConstructor.InvalidQuaternionReturnsFailure",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorInvalidQuaternionReturnsFailure::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the quaternion test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    FLoadedMeshData ZeroQuaternion = MakeValidTriangleMeshData();
+    ZeroQuaternion.NodeList[0].RelativeTransform.SetRotation(FQuat(0.0, 0.0, 0.0, 0.0));
+    bool Passed = TestBothConstructorsReject(*this, TEXT("Zero quaternion"), ZeroQuaternion, ParentMaterial, Owner);
+
+    FLoadedMeshData NonNormalizedQuaternion = MakeValidTriangleMeshData();
+    NonNormalizedQuaternion.NodeList[0].RelativeTransform.SetRotation(FQuat(2.0, 0.0, 0.0, 0.0));
+    Passed &= TestBothConstructorsReject(*this, TEXT("Finite non-normalized quaternion"), NonNormalizedQuaternion,
+                                         ParentMaterial, Owner);
+
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorOversizedCompressedTextureReturnsFailure,
+                                 "RuntimeAssetImport.AssetConstructor.OversizedCompressedTextureReturnsFailure",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorOversizedCompressedTextureReturnsFailure::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the texture limit test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    bool Passed = TestFalse(TEXT("An empty compressed texture should fail the common boundary gate"),
+                            RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(0));
+    Passed &= TestTrue(TEXT("The exact compressed texture limit should pass the common boundary gate"),
+                       RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(
+                           RuntimeAssetImport::Limits::MaximumCompressedTextureBytes));
+    Passed &= TestFalse(TEXT("One byte beyond the compressed texture limit should fail the common boundary gate"),
+                        RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(
+                            RuntimeAssetImport::Limits::MaximumCompressedTextureBytes + 1));
+
+    FLoadedMeshData OversizedTexture = MakeValidTriangleMeshData();
+    OversizedTexture.MaterialList[0].ColorStatus = EColorStatus::TextureIsSet;
+    OversizedTexture.MaterialList[0].CompressedTextureData.SetNumUninitialized(
+        static_cast<int32>(RuntimeAssetImport::Limits::MaximumCompressedTextureBytes + 1));
+    Passed &= TestBothConstructorsReject(*this, TEXT("Oversized compressed texture"), OversizedTexture, ParentMaterial,
+                                         Owner);
+
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorColorMaterialParametersApplied,
+                                 "RuntimeAssetImport.AssetConstructor.Material.ColorParametersApplied",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorColorMaterialParametersApplied::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the color material test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    FLoadedMeshData MeshData = MakeValidTriangleMeshData();
+    const FLinearColor ExpectedColor(0.8f, 0.4f, 0.2f, 1.0f);
+    MeshData.MaterialList[0].Color = ExpectedColor;
+    const bool Passed = VerifyBothConstructorMaterialParameters(*this, TEXT("Color material"), MeshData, ParentMaterial,
+                                                                Owner, EColorStatus::ColorIsSet, ExpectedColor);
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorExternalTextureParametersApplied,
+                                 "RuntimeAssetImport.AssetConstructor.Material.ExternalTextureParametersApplied",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorExternalTextureParametersApplied::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    ELoadMeshFromAssetFileResult LoadResult = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData MeshData =
+        UAssetLoader::LoadMeshFromAssetFile(ResolveTestAssetPath(TEXT("test_external_texture.obj")), LoadResult);
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the external texture test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    bool Passed =
+        TestEqual(TEXT("External texture asset should load"), LoadResult, ELoadMeshFromAssetFileResult::Success);
+    Passed &= VerifyBothConstructorMaterialParameters(*this, TEXT("External texture material"), MeshData,
+                                                      ParentMaterial, Owner, EColorStatus::TextureIsSet);
+    DestroyTestActor(World, Owner);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetConstructorEmbeddedTextureParametersApplied,
+                                 "RuntimeAssetImport.AssetConstructor.Material.EmbeddedTextureParametersApplied",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetConstructorEmbeddedTextureParametersApplied::RunTest(const FString &Parameters)
+{
+    UWorld *World = FAutomationEditorCommonUtils::CreateNewMap();
+    AActor *Owner = World != nullptr ? World->SpawnActor<AActor>() : nullptr;
+    UMaterialInterface *ParentMaterial = LoadPluginParentMaterial();
+    TArray<uint8> AssetBytes;
+    const FString AssetPath = ResolveTestAssetPath(TEXT("test_embedded_texture.gltf"));
+    if (!FFileHelper::LoadFileToArray(AssetBytes, *AssetPath))
+    {
+        AddError(FString::Printf(TEXT("Could not read embedded texture test asset: %s"), *AssetPath));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+    ELoadMeshFromAssetDataResult LoadResult = ELoadMeshFromAssetDataResult::Failure;
+    const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(AssetBytes, LoadResult);
+    if (World == nullptr || Owner == nullptr || ParentMaterial == nullptr)
+    {
+        AddError(TEXT("Could not create the embedded texture test world, actor, or plugin Parent Material."));
+        DestroyTestActor(World, Owner);
+        return false;
+    }
+
+    bool Passed =
+        TestEqual(TEXT("Embedded texture bytes should load"), LoadResult, ELoadMeshFromAssetDataResult::Success);
+    Passed &= VerifyBothConstructorMaterialParameters(*this, TEXT("Embedded texture material"), MeshData,
+                                                      ParentMaterial, Owner, EColorStatus::TextureIsSet);
     DestroyTestActor(World, Owner);
     return Passed;
 }

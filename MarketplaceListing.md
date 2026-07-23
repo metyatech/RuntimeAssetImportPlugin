@@ -40,7 +40,12 @@ Key features:
 - Blueprint and C++ APIs
 - File and memory input
 - Hierarchical node transforms and multiple mesh sections
-- Diffuse color and one embedded diffuse/base-color texture per material
+- Diffuse color and the first diffuse/base-color texture per material
+- File imports can load auxiliary files such as OBJ material files, glTF buffers, and the first external diffuse/base-color texture.
+- Auxiliary files are restricted to the model directory and its subdirectories.
+- Embedded textures are supported for file and memory imports.
+- In-memory imports do not resolve external files.
+- File, auxiliary-file, and texture size limits apply.
 - Collision generation on constructed mesh components
 - Assimp 6.0.5 Win64 binaries built from the official source tag and bundled with the plugin
 
@@ -53,8 +58,10 @@ Important limitations:
 - Win64 only
 - Import is synchronous and can block the calling thread for large files
 - Static geometry only; skeletal meshes, animations, morph targets, and LOD import are not supported
-- External texture references are not loaded
-- The first texture, first UV channel, and first vertex-color channel are used
+- File imports resolve auxiliary files only inside the model directory and its subdirectories
+- In-memory imports support self-contained data and embedded textures only; external file references are not resolved
+- Only the first diffuse/base-color texture, first UV channel, and first vertex-color channel are used
+- File and texture size limits apply as documented
 - Runtime-created meshes are local and are not automatically replicated
 - ProceduralMeshComponent can cause movement/network issues in multiplayer; DynamicMeshComponent is recommended
 

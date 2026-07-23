@@ -446,11 +446,26 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
             'test_triangle.mtl',
             'test_triangle.dae',
             'test_scene.gltf',
-            'test_triangle.glb'))
+            'test_triangle.glb',
+            'test_external_texture.obj',
+            'test_external_texture.mtl',
+            'textures\test_red.png',
+            'test_embedded_texture.gltf',
+            'test_external_buffer.gltf',
+            'buffers\test_triangle.bin'))
     {
         $SourceAsset = Join-Path $PSScriptRoot "Source\RuntimeAssetImportTest\TestAssets\$SmokeAssetFile"
         Assert-RequiredFile -Path $SourceAsset
-        [System.IO.File]::Copy($SourceAsset, (Join-Path $SmokeAssetDestination $SmokeAssetFile), $true)
+        $DestinationAsset = Join-Path $SmokeAssetDestination $SmokeAssetFile
+        [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($DestinationAsset))
+        [System.IO.File]::Copy($SourceAsset, $DestinationAsset, $true)
+    }
+    $ExpectedRedPngHash = '49e1dad481e94dfab7c9573a9a81d56aa2ca629fe15a3f7a910aa4f47601c00d'
+    $ActualRedPngHash = (Get-FileHash -LiteralPath (Join-Path $SmokeAssetDestination 'textures\test_red.png') `
+            -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($ActualRedPngHash -cne $ExpectedRedPngHash)
+    {
+        throw "Staged red PNG SHA-256 mismatch: $ActualRedPngHash"
     }
 
     $EngineResolverPath = Join-Path $TempSampleRoot 'UnrealBuildRunTestScript\Get-UEInstallPath.ps1'
@@ -563,7 +578,16 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
     {
         throw "Packaged smoke reported OverallSuccess=false: $SmokeResultPath"
     }
-    $ExpectedFormats = @('FBX', 'OBJ', 'DAE', 'glTF', 'GLB')
+    $ExpectedFormats = @(
+        'FBX',
+        'OBJ',
+        'DAE',
+        'glTF',
+        'GLB',
+        'ExternalTexture',
+        'EmbeddedTextureFile',
+        'EmbeddedTextureMemory',
+        'ExternalBuffer')
     $ActualFormats = @($SmokeResult.Formats | ForEach-Object { $_.Format } | Sort-Object)
     if ([string]::Join("`n", $ActualFormats) -cne [string]::Join("`n", @($ExpectedFormats | Sort-Object)))
     {
@@ -580,7 +604,14 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
                 'CollisionData',
                 'CollisionHit',
                 'AttachedToOwnerRoot',
-                'FollowedOwnerTransform'))
+                'FollowedOwnerTransform',
+                'ColorStatusValid',
+                'ImportedColorValid',
+                'TextureBytesValid',
+                'MaterialScalarValid',
+                'MaterialVectorValid',
+                'MaterialTextureValid',
+                'MemoryExternalAccessDenied'))
         {
             if ($FormatResult.$RequiredBooleanField -ne $true)
             {
@@ -615,7 +646,7 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
 
     Write-Host "Packaged smoke JSON: $SmokeResultPath" -ForegroundColor Green
     Write-Host ("Packaged Assimp DLL: {0}" -f $PackagedDlls[0]) -ForegroundColor Green
-    Write-Host 'Packaged Shipping smoke passed for FBX, OBJ, DAE, glTF, and GLB.' -ForegroundColor Green
+    Write-Host 'Packaged Shipping smoke passed for the five baseline formats, external and embedded textures, external buffers, material values, and memory I/O denial.' -ForegroundColor Green
     $CompletedSuccessfully = $true
 }
 finally

@@ -26,6 +26,13 @@ struct FRuntimeAssetImportSmokeFormatResult
     bool bCollisionHit = false;
     bool bAttachedToOwnerRoot = false;
     bool bFollowedOwnerTransform = false;
+    bool bColorStatusValid = true;
+    bool bImportedColorValid = true;
+    bool bTextureBytesValid = true;
+    bool bMaterialScalarValid = true;
+    bool bMaterialVectorValid = true;
+    bool bMaterialTextureValid = true;
+    bool bMemoryExternalAccessDenied = false;
     FTransform InitialComponentWorldTransform = FTransform::Identity;
     TWeakObjectPtr<AActor> Owner;
     TWeakObjectPtr<USceneComponent> OwnerRoot;

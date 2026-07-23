@@ -2,10 +2,12 @@
 
 #include "AssetLoader.h"
 
+#include "AssetImportLimits.h"
 #include "HasFeatureFix.h"
 #include "ImageUtils.h"
 #include "LogAssetLoader.h"
 #include "Misc/Paths.h"
+#include "RestrictedAssimpIOSystem.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/pbrmaterial.h>
@@ -56,7 +58,7 @@ namespace
         return FMath::IsFinite(Translation.X) && FMath::IsFinite(Translation.Y) && FMath::IsFinite(Translation.Z) &&
                FMath::IsFinite(Scale.X) && FMath::IsFinite(Scale.Y) && FMath::IsFinite(Scale.Z) &&
                FMath::IsFinite(Rotation.X) && FMath::IsFinite(Rotation.Y) && FMath::IsFinite(Rotation.Z) &&
-               FMath::IsFinite(Rotation.W);
+               FMath::IsFinite(Rotation.W) && Rotation.IsNormalized();
     }
 
     FMatrix AiMatrixToUEMatrix(const aiMatrix4x4 &Matrix)
@@ -180,31 +182,62 @@ namespace
 
         if (Texture->mHeight == 0)
         {
-            if (Texture->mWidth == 0 || Texture->pcData == nullptr)
+            const uint64 CompressedByteCount = Texture->mWidth;
+            if (Texture->mWidth == 0 || Texture->pcData == nullptr ||
+                CompressedByteCount > RuntimeAssetImport::Limits::MaximumCompressedTextureBytes ||
+                CompressedByteCount > static_cast<uint64>(MAX_int32))
             {
-                UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d embedded texture data is empty."),
-                       MaterialIndex);
+                UE_LOG(LogAssetLoader, Warning,
+                       TEXT("Material index %d compressed embedded texture is invalid: width=%u, height=%u, "
+                            "bytes=%llu, limit=%llu."),
+                       MaterialIndex, Texture->mWidth, Texture->mHeight, CompressedByteCount,
+                       RuntimeAssetImport::Limits::MaximumCompressedTextureBytes);
                 return true;
             }
 
             const uint8 *TextureBytes = reinterpret_cast<const uint8 *>(Texture->pcData);
-            OutMaterialData.CompressedTextureData.Append(TextureBytes, static_cast<int32>(Texture->mWidth));
+            OutMaterialData.CompressedTextureData.Append(TextureBytes, static_cast<int32>(CompressedByteCount));
         }
         else
         {
-            if (Texture->mWidth == 0 || Texture->pcData == nullptr)
+            const uint64 Width = Texture->mWidth;
+            const uint64 Height = Texture->mHeight;
+            const bool bPixelCountOverflows = Width > 0 && Height > MAX_uint64 / Width;
+            const uint64 PixelCount = bPixelCountOverflows ? MAX_uint64 : Width * Height;
+            const bool bByteCountOverflows = PixelCount > MAX_uint64 / sizeof(aiTexel);
+            const uint64 RawByteCount = bByteCountOverflows ? MAX_uint64 : PixelCount * sizeof(aiTexel);
+            if (Width == 0 || Height == 0 || Texture->pcData == nullptr ||
+                Width > RuntimeAssetImport::Limits::MaximumRawTextureDimension ||
+                Height > RuntimeAssetImport::Limits::MaximumRawTextureDimension || bPixelCountOverflows ||
+                PixelCount > RuntimeAssetImport::Limits::MaximumRawTexturePixels || bByteCountOverflows)
             {
-                UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d raw embedded texture data is empty."),
-                       MaterialIndex);
+                UE_LOG(LogAssetLoader, Warning,
+                       TEXT("Material index %d raw embedded texture is invalid: width=%u, height=%u, bytes=%llu, "
+                            "dimension-limit=%u, pixel-limit=%llu."),
+                       MaterialIndex, Texture->mWidth, Texture->mHeight, RawByteCount,
+                       RuntimeAssetImport::Limits::MaximumRawTextureDimension,
+                       RuntimeAssetImport::Limits::MaximumRawTexturePixels);
                 return true;
             }
 
             TArray64<uint8> CompressedTextureData;
             const FImageView ImageView(Texture->pcData, Texture->mWidth, Texture->mHeight, ERawImageFormat::BGRA8);
             FImageUtils::CompressImage(CompressedTextureData, TEXT("png"), ImageView);
-            if (!CompressedTextureData.IsEmpty())
+            const uint64 CompressedByteCount = static_cast<uint64>(CompressedTextureData.Num());
+            if (RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(CompressedByteCount) &&
+                CompressedByteCount <= static_cast<uint64>(MAX_int32))
             {
-                OutMaterialData.CompressedTextureData = MoveTemp(CompressedTextureData);
+                OutMaterialData.CompressedTextureData.Append(CompressedTextureData.GetData(),
+                                                             static_cast<int32>(CompressedByteCount));
+            }
+            else
+            {
+                UE_LOG(LogAssetLoader, Warning,
+                       TEXT("Material index %d raw embedded texture PNG is invalid: width=%u, height=%u, "
+                            "bytes=%llu, limit=%llu."),
+                       MaterialIndex, Texture->mWidth, Texture->mHeight, CompressedByteCount,
+                       RuntimeAssetImport::Limits::MaximumCompressedTextureBytes);
+                return true;
             }
         }
 
@@ -584,11 +617,21 @@ FLoadedMeshData UAssetLoader::LoadMeshFromAssetFile(const FString &FilePath,
     }
 
     Assimp::Importer Importer;
+    FRestrictedAssimpIOSystem *RestrictedIO = new FRestrictedAssimpIOSystem(FilePath);
+    if (!RestrictedIO->IsInitialized())
+    {
+        const FString DenialReason = RestrictedIO->GetLastDenialReason();
+        delete RestrictedIO;
+        UE_LOG(LogAssetLoader, Error, TEXT("Restricted IO initialization failed for '%s': %s"), *FilePath,
+               *DenialReason);
+        return {};
+    }
+    Importer.SetIOHandler(RestrictedIO);
     const aiScene *Scene = Importer.ReadFile(TCHAR_TO_UTF8(*FilePath), AiImportFlags);
     if (Scene == nullptr)
     {
-        UE_LOG(LogAssetLoader, Error, TEXT("Assimp failed to load '%s': %s"), *FilePath,
-               UTF8_TO_TCHAR(Importer.GetErrorString()));
+        UE_LOG(LogAssetLoader, Error, TEXT("Assimp failed to load '%s': %s Restricted IO: %s"), *FilePath,
+               UTF8_TO_TCHAR(Importer.GetErrorString()), *RestrictedIO->GetLastDenialReason());
         return {};
     }
 
@@ -613,14 +656,22 @@ FLoadedMeshData UAssetLoader::LoadMeshFromAssetData(const TArray<uint8> &AssetDa
         UE_LOG(LogAssetLoader, Error, TEXT("Asset byte array is empty."));
         return {};
     }
+    if (static_cast<uint64>(AssetData.Num()) > RuntimeAssetImport::Limits::MaximumMainModelFileBytes)
+    {
+        UE_LOG(LogAssetLoader, Error, TEXT("Asset byte array is %d bytes; the limit is %llu bytes."), AssetData.Num(),
+               RuntimeAssetImport::Limits::MaximumMainModelFileBytes);
+        return {};
+    }
 
     Assimp::Importer Importer;
+    FDenyExternalAssimpIOSystem *DenyExternalIO = new FDenyExternalAssimpIOSystem();
+    Importer.SetIOHandler(DenyExternalIO);
     const aiScene *Scene =
         Importer.ReadFileFromMemory(AssetData.GetData(), static_cast<size_t>(AssetData.Num()), AiImportFlags);
     if (Scene == nullptr)
     {
-        UE_LOG(LogAssetLoader, Error, TEXT("Assimp failed to load asset bytes: %s"),
-               UTF8_TO_TCHAR(Importer.GetErrorString()));
+        UE_LOG(LogAssetLoader, Error, TEXT("Assimp failed to load asset bytes: %s External IO: %s"),
+               UTF8_TO_TCHAR(Importer.GetErrorString()), *DenyExternalIO->GetLastDenialReason());
         return {};
     }
 

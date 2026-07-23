@@ -5,11 +5,16 @@
 #include "HasFeatureFix.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
+#include "Windows/WindowsHWrapper.h"
 
 #include <assimp/version.h>
+#include <bcrypt.h>
 
 namespace
 {
+    constexpr const TCHAR *ExpectedRedPngSha256 =
+        TEXT("49e1dad481e94dfab7c9573a9a81d56aa2ca629fe15a3f7a910aa4f47601c00d");
+
     FString GetTestAssetsDir()
     {
         return FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
@@ -80,6 +85,100 @@ namespace
                                      ELoadMeshFromAssetDataResult::Success);
         Passed &= AssertValidLoadedMesh(Test, Label, MeshData);
         return Passed;
+    }
+
+    FString GetSha256(const TArray<uint8> &Data)
+    {
+        if (Data.IsEmpty())
+        {
+            return {};
+        }
+
+        BCRYPT_ALG_HANDLE Algorithm = nullptr;
+        BCRYPT_HASH_HANDLE HashHandle = nullptr;
+        DWORD ObjectSize = 0;
+        DWORD HashSize = 0;
+        DWORD ResultSize = 0;
+        if (BCryptOpenAlgorithmProvider(&Algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0 ||
+            BCryptGetProperty(Algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&ObjectSize),
+                              sizeof(ObjectSize), &ResultSize, 0) < 0 ||
+            BCryptGetProperty(Algorithm, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&HashSize), sizeof(HashSize),
+                              &ResultSize, 0) < 0 ||
+            HashSize != 32)
+        {
+            if (Algorithm != nullptr)
+            {
+                BCryptCloseAlgorithmProvider(Algorithm, 0);
+            }
+            return {};
+        }
+
+        TArray<uint8> HashObject;
+        HashObject.SetNumUninitialized(static_cast<int32>(ObjectSize));
+        TArray<uint8> HashBytes;
+        HashBytes.SetNumUninitialized(static_cast<int32>(HashSize));
+        const bool bSucceeded =
+            BCryptCreateHash(Algorithm, &HashHandle, HashObject.GetData(), ObjectSize, nullptr, 0, 0) >= 0 &&
+            BCryptHashData(HashHandle, const_cast<PUCHAR>(Data.GetData()), static_cast<ULONG>(Data.Num()), 0) >= 0 &&
+            BCryptFinishHash(HashHandle, HashBytes.GetData(), HashSize, 0) >= 0;
+        if (HashHandle != nullptr)
+        {
+            BCryptDestroyHash(HashHandle);
+        }
+        BCryptCloseAlgorithmProvider(Algorithm, 0);
+        return bSucceeded ? BytesToHex(HashBytes.GetData(), HashBytes.Num()).ToLower() : FString();
+    }
+
+    const FLoadedMaterialData *FindFirstUsedMaterial(const FLoadedMeshData &MeshData)
+    {
+        for (const FLoadedMeshNode &Node : MeshData.NodeList)
+        {
+            for (const FLoadedMeshSectionData &Section : Node.Sections)
+            {
+                if (MeshData.MaterialList.IsValidIndex(Section.MaterialIndex))
+                {
+                    return &MeshData.MaterialList[Section.MaterialIndex];
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool AssertRedTextureMaterial(FAutomationTestBase &Test, const FString &Label, const FLoadedMeshData &MeshData)
+    {
+        const FLoadedMaterialData *Material = FindFirstUsedMaterial(MeshData);
+        bool Passed = Test.TestNotNull(*FString::Printf(TEXT("%s should use a material"), *Label), Material);
+        if (Material == nullptr)
+        {
+            return false;
+        }
+
+        Passed &= Test.TestEqual(*FString::Printf(TEXT("%s should use a texture"), *Label), Material->ColorStatus,
+                                 EColorStatus::TextureIsSet);
+        Passed &= Test.TestFalse(*FString::Printf(TEXT("%s texture bytes should be non-empty"), *Label),
+                                 Material->CompressedTextureData.IsEmpty());
+        Passed &= Test.TestEqual(*FString::Printf(TEXT("%s texture hash should match the red PNG"), *Label),
+                                 GetSha256(Material->CompressedTextureData), FString(ExpectedRedPngSha256));
+        return Passed;
+    }
+
+    FLoadedMeshData LoadTestAssetFile(FAutomationTestBase &Test, const TCHAR *FileName, const FString &Label,
+                                      ELoadMeshFromAssetFileResult &OutResult)
+    {
+        const FString Path = FPaths::Combine(GetTestAssetsDir(), FileName);
+        Test.TestTrue(*FString::Printf(TEXT("%s should exist: %s"), *Label, *Path), FPaths::FileExists(Path));
+        return UAssetLoader::LoadMeshFromAssetFile(Path, OutResult);
+    }
+
+    bool LoadTestAssetBytes(FAutomationTestBase &Test, const TCHAR *FileName, TArray<uint8> &OutBytes)
+    {
+        const FString Path = FPaths::Combine(GetTestAssetsDir(), FileName);
+        if (!FFileHelper::LoadFileToArray(OutBytes, *Path))
+        {
+            Test.AddError(FString::Printf(TEXT("Could not read test asset: %s"), *Path));
+            return false;
+        }
+        return true;
     }
 } // namespace
 
@@ -240,6 +339,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_ObjTriangle_ReturnsSucce
 
 bool FLoadMeshFromAssetData_ObjTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
 {
+    AddExpectedError(TEXT("Memory import denied external filesystem"), EAutomationExpectedErrorFlags::Contains, 1);
     return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.obj"), TEXT("OBJ bytes"));
 }
 
@@ -277,4 +377,138 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLoadMeshFromAssetData_GlbTriangle_ReturnsSucce
 bool FLoadMeshFromAssetData_GlbTriangle_ReturnsSuccess::RunTest(const FString &Parameters)
 {
     return LoadMemoryAndAssertSuccess(*this, TEXT("test_triangle.glb"), TEXT("GLB bytes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderColorMaterialValues,
+                                 "RuntimeAssetImport.AssetLoader.Material.ColorMaterialValues",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderColorMaterialValues::RunTest(const FString &Parameters)
+{
+    ELoadMeshFromAssetFileResult Result = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData MeshData = LoadTestAssetFile(*this, TEXT("test_triangle.obj"), TEXT("Color OBJ"), Result);
+    bool Passed = TestEqual(TEXT("Color OBJ should load successfully"), Result, ELoadMeshFromAssetFileResult::Success);
+    const FLoadedMaterialData *Material = FindFirstUsedMaterial(MeshData);
+    Passed &= TestNotNull(TEXT("Color OBJ should use a material"), Material);
+    if (Material != nullptr)
+    {
+        Passed &= TestEqual(TEXT("Color OBJ material status"), Material->ColorStatus, EColorStatus::ColorIsSet);
+        Passed &= TestTrue(TEXT("Color OBJ red value"), FMath::IsNearlyEqual(Material->Color.R, 0.8f));
+        Passed &= TestTrue(TEXT("Color OBJ green value"), FMath::IsNearlyEqual(Material->Color.G, 0.4f));
+        Passed &= TestTrue(TEXT("Color OBJ blue value"), FMath::IsNearlyEqual(Material->Color.B, 0.2f));
+        Passed &= TestTrue(TEXT("Color OBJ alpha value"), FMath::IsNearlyEqual(Material->Color.A, 1.0f));
+    }
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderExternalTextureFileImport,
+                                 "RuntimeAssetImport.AssetLoader.Material.ExternalTextureFileImport",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderExternalTextureFileImport::RunTest(const FString &Parameters)
+{
+    ELoadMeshFromAssetFileResult Result = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData MeshData =
+        LoadTestAssetFile(*this, TEXT("test_external_texture.obj"), TEXT("External texture OBJ"), Result);
+    bool Passed =
+        TestEqual(TEXT("External texture OBJ should load successfully"), Result, ELoadMeshFromAssetFileResult::Success);
+    Passed &= AssertValidLoadedMesh(*this, TEXT("External texture OBJ"), MeshData);
+    Passed &= AssertRedTextureMaterial(*this, TEXT("External texture OBJ"), MeshData);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderEmbeddedTextureFileImport,
+                                 "RuntimeAssetImport.AssetLoader.Material.EmbeddedTextureFileImport",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderEmbeddedTextureFileImport::RunTest(const FString &Parameters)
+{
+    ELoadMeshFromAssetFileResult Result = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData MeshData =
+        LoadTestAssetFile(*this, TEXT("test_embedded_texture.gltf"), TEXT("Embedded texture glTF"), Result);
+    bool Passed = TestEqual(TEXT("Embedded texture glTF should load successfully"), Result,
+                            ELoadMeshFromAssetFileResult::Success);
+    Passed &= AssertValidLoadedMesh(*this, TEXT("Embedded texture glTF"), MeshData);
+    Passed &= AssertRedTextureMaterial(*this, TEXT("Embedded texture glTF"), MeshData);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderEmbeddedTextureMemoryImport,
+                                 "RuntimeAssetImport.AssetLoader.Material.EmbeddedTextureMemoryImport",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderEmbeddedTextureMemoryImport::RunTest(const FString &Parameters)
+{
+    TArray<uint8> Bytes;
+    if (!LoadTestAssetBytes(*this, TEXT("test_embedded_texture.gltf"), Bytes))
+    {
+        return false;
+    }
+
+    ELoadMeshFromAssetDataResult Result = ELoadMeshFromAssetDataResult::Failure;
+    const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(Bytes, Result);
+    bool Passed = TestEqual(TEXT("Embedded texture glTF bytes should load successfully"), Result,
+                            ELoadMeshFromAssetDataResult::Success);
+    Passed &= AssertValidLoadedMesh(*this, TEXT("Embedded texture glTF bytes"), MeshData);
+    Passed &= AssertRedTextureMaterial(*this, TEXT("Embedded texture glTF bytes"), MeshData);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FAssetLoaderExternalTextureMemoryImportDoesNotReadFilesystem,
+    "RuntimeAssetImport.AssetLoader.Material.ExternalTextureMemoryImportDoesNotReadFilesystem",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderExternalTextureMemoryImportDoesNotReadFilesystem::RunTest(const FString &Parameters)
+{
+    TArray<uint8> Bytes;
+    if (!LoadTestAssetBytes(*this, TEXT("test_external_texture.obj"), Bytes))
+    {
+        return false;
+    }
+
+    ELoadMeshFromAssetDataResult Result = ELoadMeshFromAssetDataResult::Failure;
+    AddExpectedError(TEXT("Memory import denied external filesystem"), EAutomationExpectedErrorFlags::Contains, 1);
+    const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(Bytes, Result);
+    bool Passed =
+        TestEqual(TEXT("External texture OBJ bytes may load geometry"), Result, ELoadMeshFromAssetDataResult::Success);
+    Passed &= AssertValidLoadedMesh(*this, TEXT("External texture OBJ bytes"), MeshData);
+    for (const FLoadedMaterialData &Material : MeshData.MaterialList)
+    {
+        Passed &= TestTrue(TEXT("Memory OBJ must not contain external texture bytes"),
+                           Material.CompressedTextureData.IsEmpty());
+        Passed &= TestNotEqual(TEXT("Memory OBJ must not report TextureIsSet"), Material.ColorStatus,
+                               EColorStatus::TextureIsSet);
+    }
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderExternalBufferFileImport,
+                                 "RuntimeAssetImport.AssetLoader.Auxiliary.ExternalBufferFileImport",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderExternalBufferFileImport::RunTest(const FString &Parameters)
+{
+    return LoadFileAndAssertSuccess(*this, TEXT("test_external_buffer.gltf"), TEXT("External buffer glTF"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAssetLoaderExternalBufferMemoryImportFails,
+                                 "RuntimeAssetImport.AssetLoader.Auxiliary.ExternalBufferMemoryImportFails",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAssetLoaderExternalBufferMemoryImportFails::RunTest(const FString &Parameters)
+{
+    TArray<uint8> Bytes;
+    if (!LoadTestAssetBytes(*this, TEXT("test_external_buffer.gltf"), Bytes))
+    {
+        return false;
+    }
+
+    AddExpectedError(TEXT("Memory import denied external filesystem"), EAutomationExpectedErrorFlags::Contains, 2);
+    ELoadMeshFromAssetDataResult Result = ELoadMeshFromAssetDataResult::Success;
+    const FLoadedMeshData MeshData = UAssetLoader::LoadMeshFromAssetData(Bytes, Result);
+    bool Passed =
+        TestEqual(TEXT("External buffer glTF bytes should fail"), Result, ELoadMeshFromAssetDataResult::Failure);
+    Passed &= TestTrue(TEXT("External buffer glTF bytes should return empty mesh data"), MeshData.NodeList.IsEmpty());
+    return Passed;
 }

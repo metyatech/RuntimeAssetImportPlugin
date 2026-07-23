@@ -1,0 +1,55 @@
+{
+  "asset": { "version": "2.0", "generator": "RuntimeAssetImportPlugin Test" },
+  "scene": 0,
+  "scenes": [ { "nodes": [ 0 ] } ],
+  "nodes": [ { "name": "EmbeddedTextureTriangle", "mesh": 0 } ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "EmbeddedRedMaterial",
+      "pbrMetallicRoughness": { "baseColorTexture": { "index": 0 } }
+    }
+  ],
+  "textures": [ { "source": 0 } ],
+  "images": [
+    {
+      "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4z8DwHwAFAAH/VscvDQAAAABJRU5ErkJggg=="
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC3",
+      "min": [ 0.0, 0.0, 0.0 ],
+      "max": [ 1.0, 1.0, 0.0 ]
+    },
+    { "bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC2" },
+    { "bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR" }
+  ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0, "byteLength": 36, "target": 34962 },
+    { "buffer": 0, "byteOffset": 36, "byteLength": 36, "target": 34962 },
+    { "buffer": 0, "byteOffset": 72, "byteLength": 24, "target": 34962 },
+    { "buffer": 0, "byteOffset": 96, "byteLength": 6, "target": 34963 }
+  ],
+  "buffers": [
+    {
+      "byteLength": 102,
+      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAABAAIA"
+    }
+  ]
+}

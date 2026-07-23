@@ -9,6 +9,16 @@
 - [x] StaticMesh and latent APIs removed
 - [x] Runtime import and construction automation tests pass on UE 5.4, 5.5, 5.7, and 5.8
 - [x] Fab package structure validation passes
+- [x] Safe external texture file import
+- [x] Embedded texture file and memory import
+- [x] Model-directory sandbox for MTL, glTF buffers, and textures
+- [x] Relative path escape rejection
+- [x] Absolute outside-root rejection
+- [x] Junction escape rejection
+- [x] Memory import external-I/O denial
+- [x] Actual material parameter verification
+- [x] Texture and auxiliary file size limits
+- [x] Quaternion validity validation
 
 ## Unreal Engine Package Matrix
 
@@ -31,6 +41,10 @@
 - [x] Packaged executable contains Assimp DLL
 - [x] No Assimp DLL load error
 - [x] Owner transform tracking verified
+- [x] Safe external PNG, MTL, and glTF buffer loading
+- [x] Embedded PNG file and memory loading
+- [x] Actual imported color and material scalar/vector/texture values
+- [x] Memory imports deny external material, buffer, and texture access
 
 ## Media
 
@@ -42,7 +56,10 @@
 
 ## Fab Portal
 
-- [ ] Public Project File Link that does not require login
+- [ ] UE 5.4 Project File Link
+- [ ] UE 5.5 Project File Link
+- [ ] UE 5.7 Project File Link
+- [ ] UE 5.8 Project File Link
 - [ ] Seller, payout, and tax setup
 - [ ] Preview Listing
 - [ ] Manual activation selected

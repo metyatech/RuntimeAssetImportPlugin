@@ -3,12 +3,14 @@
 #include "RuntimeAssetImportSmokeGameInstance.h"
 
 #include "AssetConstructor.h"
+#include "AssetLoader.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformMisc.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -21,17 +23,66 @@ DEFINE_LOG_CATEGORY_STATIC(LogRuntimeAssetImportSmoke, Log, All);
 
 namespace
 {
+    enum class ESmokeMaterialExpectation : uint8
+    {
+        Any,
+        Color,
+        RedTexture,
+    };
+
     struct FSmokeAsset
     {
         const TCHAR *Format;
         const TCHAR *FileName;
+        ESmokeMaterialExpectation MaterialExpectation = ESmokeMaterialExpectation::Any;
+        bool bMemoryImport = false;
     };
 
     constexpr FSmokeAsset SmokeAssets[] = {
-        {TEXT("FBX"), TEXT("test_triangle.fbx")}, {TEXT("OBJ"), TEXT("test_triangle.obj")},
-        {TEXT("DAE"), TEXT("test_triangle.dae")}, {TEXT("glTF"), TEXT("test_scene.gltf")},
+        {TEXT("FBX"), TEXT("test_triangle.fbx")},
+        {TEXT("OBJ"), TEXT("test_triangle.obj"), ESmokeMaterialExpectation::Color},
+        {TEXT("DAE"), TEXT("test_triangle.dae")},
+        {TEXT("glTF"), TEXT("test_scene.gltf")},
         {TEXT("GLB"), TEXT("test_triangle.glb")},
+        {TEXT("ExternalTexture"), TEXT("test_external_texture.obj"), ESmokeMaterialExpectation::RedTexture},
+        {TEXT("EmbeddedTextureFile"), TEXT("test_embedded_texture.gltf"), ESmokeMaterialExpectation::RedTexture},
+        {TEXT("EmbeddedTextureMemory"), TEXT("test_embedded_texture.gltf"), ESmokeMaterialExpectation::RedTexture,
+         true},
+        {TEXT("ExternalBuffer"), TEXT("test_external_buffer.gltf")},
     };
+
+    const FLoadedMaterialData *FindSmokeFirstUsedMaterial(const FLoadedMeshData &MeshData)
+    {
+        for (const FLoadedMeshNode &Node : MeshData.NodeList)
+        {
+            for (const FLoadedMeshSectionData &Section : Node.Sections)
+            {
+                if (MeshData.MaterialList.IsValidIndex(Section.MaterialIndex))
+                {
+                    return &MeshData.MaterialList[Section.MaterialIndex];
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool LoadSmokeAssetBytes(const FString &Path, TArray<uint8> &OutBytes)
+    {
+        OutBytes.Reset();
+        return FFileHelper::LoadFileToArray(OutBytes, *Path);
+    }
+
+    bool SmokeHasNoImportedExternalTexture(const FLoadedMeshData &MeshData)
+    {
+        for (const FLoadedMaterialData &Material : MeshData.MaterialList)
+        {
+            if (Material.ColorStatus == EColorStatus::TextureIsSet || !Material.CompressedTextureData.IsEmpty())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool TransformComponentsNearlyEqual(const FTransform &Actual, const FTransform &Expected)
     {
@@ -80,6 +131,11 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
     FormatResults.Reset();
     FormatResults.Reserve(UE_ARRAY_COUNT(SmokeAssets));
 
+    const FString SmokeAssetDirectory = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("SmokeAssets"));
+    TArray<uint8> ExpectedRedPngBytes;
+    const bool bExpectedRedPngLoaded =
+        LoadSmokeAssetBytes(FPaths::Combine(SmokeAssetDirectory, TEXT("textures/test_red.png")), ExpectedRedPngBytes);
+
     UMaterialInterface *ParentMaterial = LoadObject<UMaterialInterface>(
         nullptr, TEXT("/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
     if (ParentMaterial == nullptr)
@@ -112,18 +168,57 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
             FTransform(FRotator(10.0, 20.0, 30.0), FVector(100.0, 200.0, 300.0), FVector(1.25, 0.75, 1.5)));
         OwnerRoot->UpdateComponentToWorld();
 
-        EConstructDynamicMeshComponentFromAssetFileResult ImportResult =
-            EConstructDynamicMeshComponentFromAssetFileResult::Failure;
-        const FString AssetPath =
-            FPaths::Combine(FPaths::ProjectContentDir(), TEXT("SmokeAssets"), SmokeAsset.FileName);
-        UDynamicMeshComponent *Component = UAssetConstructor::ConstructDynamicMeshComponentFromAssetFile(
-            AssetPath, ParentMaterial, Owner, ImportResult);
+        const FString AssetPath = FPaths::Combine(SmokeAssetDirectory, SmokeAsset.FileName);
+        FLoadedMeshData MeshData;
+        bool bLoaded = false;
+        if (SmokeAsset.bMemoryImport)
+        {
+            TArray<uint8> AssetBytes;
+            ELoadMeshFromAssetDataResult LoadResult = ELoadMeshFromAssetDataResult::Failure;
+            if (LoadSmokeAssetBytes(AssetPath, AssetBytes))
+            {
+                MeshData = UAssetLoader::LoadMeshFromAssetData(AssetBytes, LoadResult);
+            }
+            bLoaded = LoadResult == ELoadMeshFromAssetDataResult::Success;
+        }
+        else
+        {
+            ELoadMeshFromAssetFileResult LoadResult = ELoadMeshFromAssetFileResult::Failure;
+            MeshData = UAssetLoader::LoadMeshFromAssetFile(AssetPath, LoadResult);
+            bLoaded = LoadResult == ELoadMeshFromAssetFileResult::Success;
+        }
+
+        const FLoadedMaterialData *LoadedMaterial = FindSmokeFirstUsedMaterial(MeshData);
+        if (SmokeAsset.MaterialExpectation == ESmokeMaterialExpectation::Color)
+        {
+            Result.bMaterialScalarValid = false;
+            Result.bMaterialVectorValid = false;
+            Result.bColorStatusValid =
+                LoadedMaterial != nullptr && LoadedMaterial->ColorStatus == EColorStatus::ColorIsSet;
+            Result.bImportedColorValid = LoadedMaterial != nullptr &&
+                                         FMath::IsNearlyEqual(LoadedMaterial->Color.R, 0.8f) &&
+                                         FMath::IsNearlyEqual(LoadedMaterial->Color.G, 0.4f) &&
+                                         FMath::IsNearlyEqual(LoadedMaterial->Color.B, 0.2f) &&
+                                         FMath::IsNearlyEqual(LoadedMaterial->Color.A, 1.0f);
+        }
+        else if (SmokeAsset.MaterialExpectation == ESmokeMaterialExpectation::RedTexture)
+        {
+            Result.bMaterialScalarValid = false;
+            Result.bMaterialTextureValid = false;
+            Result.bColorStatusValid =
+                LoadedMaterial != nullptr && LoadedMaterial->ColorStatus == EColorStatus::TextureIsSet;
+            Result.bTextureBytesValid = bExpectedRedPngLoaded && LoadedMaterial != nullptr &&
+                                        LoadedMaterial->CompressedTextureData == ExpectedRedPngBytes;
+        }
+
+        UDynamicMeshComponent *Component =
+            bLoaded ? UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(MeshData, ParentMaterial, Owner)
+                    : nullptr;
 
         Result.Owner = Owner;
         Result.OwnerRoot = OwnerRoot;
         Result.Component = Component;
-        Result.bImportSuccess =
-            ImportResult == EConstructDynamicMeshComponentFromAssetFileResult::Success && Component != nullptr;
+        Result.bImportSuccess = bLoaded && Component != nullptr;
         if (Component == nullptr)
         {
             UE_LOG(LogRuntimeAssetImportSmoke, Error, TEXT("%s: import or construction failed for '%s'."),
@@ -151,6 +246,31 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
             Result.MaterialCount += GeneratedComponent->GetNumMaterials();
             Result.bMaterialSlot0Valid |=
                 GeneratedComponent->GetNumMaterials() > 0 && GeneratedComponent->GetMaterial(0) != nullptr;
+            for (int32 MaterialSlot = 0; MaterialSlot < GeneratedComponent->GetNumMaterials(); ++MaterialSlot)
+            {
+                UMaterialInstanceDynamic *MaterialInstance =
+                    Cast<UMaterialInstanceDynamic>(GeneratedComponent->GetMaterial(MaterialSlot));
+                if (MaterialInstance == nullptr)
+                {
+                    continue;
+                }
+
+                if (SmokeAsset.MaterialExpectation == ESmokeMaterialExpectation::Color)
+                {
+                    Result.bMaterialScalarValid |= FMath::IsNearlyEqual(
+                        MaterialInstance->K2_GetScalarParameterValue(TEXT("TextureBlendIntensityForBaseColor")), 0.0f);
+                    Result.bMaterialVectorValid |=
+                        MaterialInstance->K2_GetVectorParameterValue(TEXT("BaseColor4"))
+                            .Equals(FLinearColor(0.8f, 0.4f, 0.2f, 1.0f), KINDA_SMALL_NUMBER);
+                }
+                else if (SmokeAsset.MaterialExpectation == ESmokeMaterialExpectation::RedTexture)
+                {
+                    Result.bMaterialScalarValid |= FMath::IsNearlyEqual(
+                        MaterialInstance->K2_GetScalarParameterValue(TEXT("TextureBlendIntensityForBaseColor")), 1.0f);
+                    Result.bMaterialTextureValid |=
+                        MaterialInstance->K2_GetTextureParameterValue(TEXT("BaseColorTexture")) != nullptr;
+                }
+            }
             Result.bBoundsNonZero |= !GeneratedComponent->Bounds.BoxExtent.IsNearlyZero();
             if (ComponentTriangleCount > 0)
             {
@@ -168,6 +288,31 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
 
         Owner->SetActorTransform(
             FTransform(FRotator(-15.0, 45.0, 5.0), FVector(-50.0, 75.0, 125.0), FVector(0.5, 1.25, 2.0)));
+    }
+
+    bool bMemoryExternalAccessDenied = false;
+    TArray<uint8> ExternalTextureObjBytes;
+    TArray<uint8> ExternalBufferGltfBytes;
+    const bool bExternalTextureBytesLoaded = LoadSmokeAssetBytes(
+        FPaths::Combine(SmokeAssetDirectory, TEXT("test_external_texture.obj")), ExternalTextureObjBytes);
+    const bool bExternalBufferBytesLoaded = LoadSmokeAssetBytes(
+        FPaths::Combine(SmokeAssetDirectory, TEXT("test_external_buffer.gltf")), ExternalBufferGltfBytes);
+    if (bExternalTextureBytesLoaded && bExternalBufferBytesLoaded)
+    {
+        ELoadMeshFromAssetDataResult ExternalTextureMemoryResult = ELoadMeshFromAssetDataResult::Failure;
+        const FLoadedMeshData ExternalTextureMemoryData =
+            UAssetLoader::LoadMeshFromAssetData(ExternalTextureObjBytes, ExternalTextureMemoryResult);
+        ELoadMeshFromAssetDataResult ExternalBufferMemoryResult = ELoadMeshFromAssetDataResult::Success;
+        const FLoadedMeshData ExternalBufferMemoryData =
+            UAssetLoader::LoadMeshFromAssetData(ExternalBufferGltfBytes, ExternalBufferMemoryResult);
+        bMemoryExternalAccessDenied = ExternalTextureMemoryResult == ELoadMeshFromAssetDataResult::Success &&
+                                      SmokeHasNoImportedExternalTexture(ExternalTextureMemoryData) &&
+                                      ExternalBufferMemoryResult == ELoadMeshFromAssetDataResult::Failure &&
+                                      ExternalBufferMemoryData.NodeList.IsEmpty();
+    }
+    for (FRuntimeAssetImportSmokeFormatResult &Result : FormatResults)
+    {
+        Result.bMemoryExternalAccessDenied = bMemoryExternalAccessDenied;
     }
 
     World->GetTimerManager().SetTimerForNextTick(
@@ -240,10 +385,13 @@ void URuntimeAssetImportSmokeGameInstance::WriteResultsAndExit()
     TArray<TSharedPtr<FJsonValue>> JsonFormats;
     for (const FRuntimeAssetImportSmokeFormatResult &Result : FormatResults)
     {
-        const bool bFormatSuccess = Result.bImportSuccess && Result.bComponentRegistered && Result.TriangleCount > 0 &&
-                                    Result.MaterialCount > 0 && Result.bMaterialSlot0Valid && Result.bBoundsNonZero &&
-                                    Result.bCollisionEnabled && Result.bCollisionData && Result.bCollisionHit &&
-                                    Result.bAttachedToOwnerRoot && Result.bFollowedOwnerTransform;
+        const bool bFormatSuccess =
+            Result.bImportSuccess && Result.bComponentRegistered && Result.TriangleCount > 0 &&
+            Result.MaterialCount > 0 && Result.bMaterialSlot0Valid && Result.bBoundsNonZero &&
+            Result.bCollisionEnabled && Result.bCollisionData && Result.bCollisionHit && Result.bAttachedToOwnerRoot &&
+            Result.bFollowedOwnerTransform && Result.bColorStatusValid && Result.bImportedColorValid &&
+            Result.bTextureBytesValid && Result.bMaterialScalarValid && Result.bMaterialVectorValid &&
+            Result.bMaterialTextureValid && Result.bMemoryExternalAccessDenied;
         bOverallSuccess &= bFormatSuccess;
 
         TSharedRef<FJsonObject> JsonFormat = MakeShared<FJsonObject>();
@@ -259,6 +407,13 @@ void URuntimeAssetImportSmokeGameInstance::WriteResultsAndExit()
         JsonFormat->SetBoolField(TEXT("CollisionHit"), Result.bCollisionHit);
         JsonFormat->SetBoolField(TEXT("AttachedToOwnerRoot"), Result.bAttachedToOwnerRoot);
         JsonFormat->SetBoolField(TEXT("FollowedOwnerTransform"), Result.bFollowedOwnerTransform);
+        JsonFormat->SetBoolField(TEXT("ColorStatusValid"), Result.bColorStatusValid);
+        JsonFormat->SetBoolField(TEXT("ImportedColorValid"), Result.bImportedColorValid);
+        JsonFormat->SetBoolField(TEXT("TextureBytesValid"), Result.bTextureBytesValid);
+        JsonFormat->SetBoolField(TEXT("MaterialScalarValid"), Result.bMaterialScalarValid);
+        JsonFormat->SetBoolField(TEXT("MaterialVectorValid"), Result.bMaterialVectorValid);
+        JsonFormat->SetBoolField(TEXT("MaterialTextureValid"), Result.bMaterialTextureValid);
+        JsonFormat->SetBoolField(TEXT("MemoryExternalAccessDenied"), Result.bMemoryExternalAccessDenied);
         JsonFormats.Add(MakeShared<FJsonValueObject>(JsonFormat));
     }
 

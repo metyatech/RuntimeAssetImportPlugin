@@ -2,6 +2,7 @@
 
 #include "AssetConstructorHelpers.h"
 
+#include "AssetImportLimits.h"
 #include "Engine/Texture2D.h"
 #include "ImageUtils.h"
 #include "Materials/MaterialInterface.h"
@@ -35,7 +36,7 @@ namespace
     bool IsFiniteTransform(const FTransform &Value)
     {
         return IsFiniteVector(Value.GetTranslation()) && IsFiniteVector(Value.GetScale3D()) &&
-               IsFiniteQuaternion(Value.GetRotation());
+               IsFiniteQuaternion(Value.GetRotation()) && Value.GetRotation().IsNormalized();
     }
 
     bool HasMaterialParameter(const UMaterialInterface &MaterialInterface, const EMaterialParameterType ParameterType,
@@ -88,7 +89,8 @@ bool ValidateMeshDataForConstruction(const FLoadedMeshData &MeshData, FString &O
         if (!IsFiniteTransform(Node.RelativeTransform))
         {
             OutErrorMessage = FString::Printf(
-                TEXT("Node index %d, section index %d field RelativeTransform element index %d contains NaN or Inf."),
+                TEXT("Node index %d, section index %d field RelativeTransform element index %d contains a "
+                     "non-finite or non-normalized value."),
                 NodeIndex, INDEX_NONE, 0);
             return false;
         }
@@ -238,11 +240,15 @@ bool ValidateMeshDataForConstruction(const FLoadedMeshData &MeshData, FString &O
                 MaterialIndex, INDEX_NONE, INDEX_NONE, 0);
             return false;
         }
-        if (MaterialData.ColorStatus == EColorStatus::TextureIsSet && MaterialData.CompressedTextureData.IsEmpty())
+        if (MaterialData.ColorStatus == EColorStatus::TextureIsSet &&
+            !RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(
+                static_cast<uint64>(MaterialData.CompressedTextureData.Num())))
         {
             OutErrorMessage = FString::Printf(
-                TEXT("Material index %d field CompressedTextureData is empty while ColorStatus is TextureIsSet."),
-                MaterialIndex);
+                TEXT("Material index %d field CompressedTextureData has %d bytes while ColorStatus is TextureIsSet; "
+                     "the valid range is 1..%llu bytes."),
+                MaterialIndex, MaterialData.CompressedTextureData.Num(),
+                RuntimeAssetImport::Limits::MaximumCompressedTextureBytes);
             return false;
         }
     }

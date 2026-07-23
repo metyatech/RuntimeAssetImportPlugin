@@ -1,0 +1,3 @@
+newmtl ExternalTextureMaterial
+Kd 1.0 1.0 1.0
+map_Kd textures/test_red.png
