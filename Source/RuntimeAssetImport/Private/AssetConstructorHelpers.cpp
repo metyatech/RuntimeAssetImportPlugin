@@ -3,6 +3,7 @@
 #include "AssetConstructorHelpers.h"
 
 #include "AssetImportLimits.h"
+#include "CompressedTextureValidation.h"
 #include "Engine/Texture2D.h"
 #include "ImageUtils.h"
 #include "Materials/MaterialInterface.h"
@@ -240,16 +241,28 @@ bool ValidateMeshDataForConstruction(const FLoadedMeshData &MeshData, FString &O
                 MaterialIndex, INDEX_NONE, INDEX_NONE, 0);
             return false;
         }
-        if (MaterialData.ColorStatus == EColorStatus::TextureIsSet &&
-            !RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(
-                static_cast<uint64>(MaterialData.CompressedTextureData.Num())))
+        if (MaterialData.ColorStatus == EColorStatus::TextureIsSet)
         {
-            OutErrorMessage = FString::Printf(
-                TEXT("Material index %d field CompressedTextureData has %d bytes while ColorStatus is TextureIsSet; "
-                     "the valid range is 1..%llu bytes."),
-                MaterialIndex, MaterialData.CompressedTextureData.Num(),
-                RuntimeAssetImport::Limits::MaximumCompressedTextureBytes);
-            return false;
+            const uint64 ByteCount = static_cast<uint64>(MaterialData.CompressedTextureData.Num());
+            if (!RuntimeAssetImport::Limits::IsCompressedTextureByteCountValid(ByteCount))
+            {
+                OutErrorMessage = FString::Printf(
+                    TEXT("Material index %d field CompressedTextureData has %d bytes while ColorStatus is "
+                         "TextureIsSet; the valid range is 1..%llu bytes."),
+                    MaterialIndex, MaterialData.CompressedTextureData.Num(),
+                    RuntimeAssetImport::Limits::MaximumCompressedTextureBytes);
+                return false;
+            }
+
+            RuntimeAssetImport::CompressedTextureValidation::FCompressedTextureMetadata TextureMetadata;
+            FString TextureValidationError;
+            if (!RuntimeAssetImport::CompressedTextureValidation::ValidateCompressedTexturePayload(
+                    MaterialData.CompressedTextureData, TextureMetadata, TextureValidationError))
+            {
+                OutErrorMessage = FString::Printf(TEXT("Material index %d field CompressedTextureData is invalid: %s"),
+                                                  MaterialIndex, *TextureValidationError);
+                return false;
+            }
         }
     }
     return true;

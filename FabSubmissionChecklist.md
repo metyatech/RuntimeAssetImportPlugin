@@ -18,6 +18,11 @@
 - [x] Memory import external-I/O denial
 - [x] Actual material parameter verification
 - [x] Texture and auxiliary file size limits
+- [x] Compressed image metadata validation before decode
+- [x] Open-only unique-file and byte-budget accounting
+- [x] File-growth delta accounting
+- [x] Process-CWD-independent relative path resolution
+- [x] Auxiliary hard-link rejection
 - [x] Quaternion validity validation
 
 ## Unreal Engine Package Matrix
@@ -45,6 +50,7 @@
 - [x] Embedded PNG file and memory loading
 - [x] Actual imported color and material scalar/vector/texture values
 - [x] Memory imports deny external material, buffer, and texture access
+- [x] Oversized compressed image metadata rejected before decode for construction, file import, and memory import
 
 ## Media
 

@@ -203,6 +203,8 @@ $requiredEntries = @(
     'RuntimeAssetImport/Source/RuntimeAssetImport/Private/RestrictedAssimpIOSystem.h',
     'RuntimeAssetImport/Source/RuntimeAssetImport/Private/RestrictedAssimpIOSystem.cpp',
     'RuntimeAssetImport/Source/RuntimeAssetImport/Private/AssetImportLimits.h',
+    'RuntimeAssetImport/Source/RuntimeAssetImport/Private/CompressedTextureValidation.h',
+    'RuntimeAssetImport/Source/RuntimeAssetImport/Private/CompressedTextureValidation.cpp',
     'RuntimeAssetImport/Source/ThirdParty/assimp/assimp.Build.cs',
     'RuntimeAssetImport/Source/ThirdParty/assimp/BUILD-INFO.json',
     'RuntimeAssetImport/Source/ThirdParty/assimp/LICENSE',

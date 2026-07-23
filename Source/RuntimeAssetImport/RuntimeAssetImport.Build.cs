@@ -31,6 +31,7 @@ public class RuntimeAssetImport : ModuleRules
                 "Engine",
                 "assimp",
                 "GeometryCore",
+                "ImageWrapper",
                 "MeshConversion",
             }
         );

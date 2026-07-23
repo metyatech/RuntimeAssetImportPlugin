@@ -3,6 +3,7 @@
 #include "RestrictedAssimpIOSystem.h"
 
 #include "AssetImportLimits.h"
+#include "HAL/PlatformProcess.h"
 #include "LogAssetLoader.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
@@ -56,7 +57,8 @@ namespace
         }
     }
 
-    bool GetHandleFileInfo(const HANDLE Handle, bool &OutIsDirectory, uint64 &OutFileSize, FString &OutError)
+    bool GetHandleFileInfo(const HANDLE Handle, bool &OutIsDirectory, uint64 &OutFileSize, DWORD &OutLinkCount,
+                           FString &OutError)
     {
         BY_HANDLE_FILE_INFORMATION Information{};
         if (!GetFileInformationByHandle(Handle, &Information))
@@ -68,6 +70,7 @@ namespace
 
         OutIsDirectory = (Information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         OutFileSize = (static_cast<uint64>(Information.nFileSizeHigh) << 32) | Information.nFileSizeLow;
+        OutLinkCount = Information.nNumberOfLinks;
         return true;
     }
 
@@ -201,7 +204,14 @@ FRestrictedAssimpIOSystem::FRestrictedAssimpIOSystem(const FString &MainModelPat
         return;
     }
 
-    RequestedMainModelAbsolutePath = FPaths::ConvertRelativePathToFull(MainModelPath);
+    FString NormalizedMainModelPath = MainModelPath;
+    NormalizedMainModelPath.ReplaceInline(TEXT("/"), TEXT("\\"));
+    RequestedMainModelCallerPath = NormalizedMainModelPath;
+    RequestedModelRootCallerPath = FPaths::GetPath(NormalizedMainModelPath);
+    RequestedMainModelAbsolutePath =
+        FPaths::IsRelative(NormalizedMainModelPath)
+            ? FPaths::ConvertRelativePathToFull(FPlatformProcess::BaseDir(), NormalizedMainModelPath)
+            : FPaths::ConvertRelativePathToFull(NormalizedMainModelPath);
     RequestedMainModelAbsolutePath.ReplaceInline(TEXT("/"), TEXT("\\"));
     RequestedModelRootAbsolutePath = FPaths::GetPath(RequestedMainModelAbsolutePath);
     if (RequestedModelRootAbsolutePath.IsEmpty())
@@ -223,8 +233,10 @@ FRestrictedAssimpIOSystem::FRestrictedAssimpIOSystem(const FString &MainModelPat
     FString Error;
     bool RootIsDirectory = false;
     uint64 IgnoredRootSize = 0;
-    const bool bRootValid = GetFinalPathForHandle(RootHandle, FinalModelRootPath, Error) &&
-                            GetHandleFileInfo(RootHandle, RootIsDirectory, IgnoredRootSize, Error) && RootIsDirectory;
+    DWORD IgnoredRootLinkCount = 0;
+    const bool bRootValid =
+        GetFinalPathForHandle(RootHandle, FinalModelRootPath, Error) &&
+        GetHandleFileInfo(RootHandle, RootIsDirectory, IgnoredRootSize, IgnoredRootLinkCount, Error) && RootIsDirectory;
     CloseHandle(RootHandle);
     if (!bRootValid)
     {
@@ -237,14 +249,17 @@ FRestrictedAssimpIOSystem::FRestrictedAssimpIOSystem(const FString &MainModelPat
     if (MainHandle == INVALID_HANDLE_VALUE)
     {
         RecordDenial(MainModelPath,
-                     FString::Printf(TEXT("The main model could not be opened (Windows error %lu)."), GetLastError()));
+                     FString::Printf(TEXT("The main model '%s' could not be opened (Windows error %lu)."),
+                                     *RequestedMainModelAbsolutePath, GetLastError()));
         return;
     }
 
     bool MainIsDirectory = false;
     uint64 MainFileSize = 0;
-    const bool bMainInfoValid = GetFinalPathForHandle(MainHandle, FinalMainModelPath, Error) &&
-                                GetHandleFileInfo(MainHandle, MainIsDirectory, MainFileSize, Error);
+    DWORD IgnoredMainLinkCount = 0;
+    const bool bMainInfoValid =
+        GetFinalPathForHandle(MainHandle, FinalMainModelPath, Error) &&
+        GetHandleFileInfo(MainHandle, MainIsDirectory, MainFileSize, IgnoredMainLinkCount, Error);
     CloseHandle(MainHandle);
     if (!bMainInfoValid)
     {
@@ -274,8 +289,6 @@ FRestrictedAssimpIOSystem::FRestrictedAssimpIOSystem(const FString &MainModelPat
         return;
     }
 
-    UniqueFinalPaths.Add(FinalMainModelPath.ToLower());
-    TotalUniqueOpenedBytes = MainFileSize;
     bInitialized = true;
 }
 
@@ -292,7 +305,7 @@ bool FRestrictedAssimpIOSystem::Exists(const char *FilePath) const
     HANDLE Handle = INVALID_HANDLE_VALUE;
     uint64 FileSize = 0;
     FString FinalPath;
-    const bool bResolved = ResolveFile(FromAssimpPath(FilePath), true, Handle, FileSize, FinalPath);
+    const bool bResolved = ResolveFile(FromAssimpPath(FilePath), false, Handle, FileSize, FinalPath);
     if (Handle != INVALID_HANDLE_VALUE)
     {
         CloseHandle(Handle);
@@ -414,8 +427,10 @@ bool FRestrictedAssimpIOSystem::ResolveFile(const FString &CallerPath, const boo
     FString Error;
     bool bIsDirectory = false;
     uint64 FileSize = 0;
+    DWORD LinkCount = 0;
     FString FinalPath;
-    if (!GetFinalPathForHandle(Handle, FinalPath, Error) || !GetHandleFileInfo(Handle, bIsDirectory, FileSize, Error))
+    if (!GetFinalPathForHandle(Handle, FinalPath, Error) ||
+        !GetHandleFileInfo(Handle, bIsDirectory, FileSize, LinkCount, Error))
     {
         CloseHandle(Handle);
         RecordDenial(CallerPath, Error);
@@ -436,6 +451,12 @@ bool FRestrictedAssimpIOSystem::ResolveFile(const FString &CallerPath, const boo
     }
 
     const bool bIsMainModel = FinalPath.Equals(FinalMainModelPath, ESearchCase::IgnoreCase);
+    if (!bIsMainModel && LinkCount > 1)
+    {
+        CloseHandle(Handle);
+        RecordDenial(CallerPath, TEXT("Auxiliary files with multiple hard links are not allowed."));
+        return false;
+    }
     const uint64 PerFileLimit = bIsMainModel ? RuntimeAssetImport::Limits::MaximumMainModelFileBytes
                                              : RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes;
     if (FileSize > PerFileLimit)
@@ -459,7 +480,7 @@ bool FRestrictedAssimpIOSystem::ResolveFile(const FString &CallerPath, const boo
         RecordDenial(CallerPath, TEXT("The file size cannot be represented by size_t."));
         return false;
     }
-    if (TrackBudget && !TrackUniqueFile(FinalPath, FileSize))
+    if (TrackBudget && !AccountOpenedFile(FinalPath, FileSize))
     {
         CloseHandle(Handle);
         return false;
@@ -491,8 +512,9 @@ bool FRestrictedAssimpIOSystem::ResolveDirectory(const FString &CallerPath, FStr
     FString Error;
     bool bIsDirectory = false;
     uint64 IgnoredSize = 0;
+    DWORD IgnoredLinkCount = 0;
     const bool bResolved = GetFinalPathForHandle(Handle, OutFinalPath, Error) &&
-                           GetHandleFileInfo(Handle, bIsDirectory, IgnoredSize, Error);
+                           GetHandleFileInfo(Handle, bIsDirectory, IgnoredSize, IgnoredLinkCount, Error);
     CloseHandle(Handle);
     if (!bResolved)
     {
@@ -523,16 +545,24 @@ bool FRestrictedAssimpIOSystem::MakeAbsoluteCandidatePath(const FString &CallerP
 
     FString NormalizedPath = CallerPath;
     NormalizedPath.ReplaceInline(TEXT("/"), TEXT("\\"));
+    if (NormalizedPath.Equals(RequestedMainModelCallerPath, ESearchCase::IgnoreCase))
+    {
+        OutAbsolutePath = RequestedMainModelAbsolutePath;
+        return true;
+    }
+    if (NormalizedPath.Equals(RequestedModelRootCallerPath, ESearchCase::IgnoreCase))
+    {
+        OutAbsolutePath = RequestedModelRootAbsolutePath;
+        return true;
+    }
+    if (FPaths::IsRelative(NormalizedPath) && IsPathWithinRoot(NormalizedPath, RequestedModelRootCallerPath))
+    {
+        FString RelativeToRequestedRoot = NormalizedPath.RightChop(RequestedModelRootCallerPath.Len());
+        RelativeToRequestedRoot.RemoveFromStart(TEXT("\\"));
+        NormalizedPath = FPaths::Combine(FinalModelRootPath, RelativeToRequestedRoot);
+    }
     if (FPaths::IsRelative(NormalizedPath))
     {
-        FString ProcessAbsolutePath = FPaths::ConvertRelativePathToFull(NormalizedPath);
-        ProcessAbsolutePath.ReplaceInline(TEXT("/"), TEXT("\\"));
-        if (IsPathWithinRoot(ProcessAbsolutePath, RequestedModelRootAbsolutePath))
-        {
-            OutAbsolutePath = MoveTemp(ProcessAbsolutePath);
-            return true;
-        }
-
         const std::string &Current = CurrentDirectory();
         const FString BaseDirectory = Current.empty() ? FinalModelRootPath : FString(UTF8_TO_TCHAR(Current.c_str()));
         NormalizedPath = FPaths::Combine(BaseDirectory, NormalizedPath);
@@ -542,19 +572,44 @@ bool FRestrictedAssimpIOSystem::MakeAbsoluteCandidatePath(const FString &CallerP
     return true;
 }
 
-bool FRestrictedAssimpIOSystem::TrackUniqueFile(const FString &FinalPath, const uint64 FileSize) const
+bool FRestrictedAssimpIOSystem::AccountOpenedFile(const FString &FinalPath, const uint64 CurrentFileSize) const
 {
     FScopeLock Lock(&StateMutex);
     const FString Key = FinalPath.ToLower();
-    if (UniqueFinalPaths.Contains(Key))
+    uint64 *RecordedSize = AccountedFinalPathSizes.Find(Key);
+    if (RecordedSize != nullptr)
     {
+        if (CurrentFileSize <= *RecordedSize)
+        {
+            return true;
+        }
+
+        const uint64 Delta = CurrentFileSize - *RecordedSize;
+        if (TotalUniqueOpenedBytes > RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes ||
+            Delta > RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes - TotalUniqueOpenedBytes)
+        {
+            LastDenialReason = FString::Printf(
+                TEXT("Total unique opened byte budget exceeded for path '%s': recorded-size=%llu, current-size=%llu, "
+                     "delta=%llu, current-total=%llu, limit=%llu."),
+                *FinalPath, *RecordedSize, CurrentFileSize, Delta, TotalUniqueOpenedBytes,
+                RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes);
+            if (!bLoggedDenial)
+            {
+                UE_LOG(LogAssetLoader, Warning, TEXT("Restricted Assimp IO denied access: %s"), *LastDenialReason);
+                bLoggedDenial = true;
+            }
+            return false;
+        }
+
+        *RecordedSize = CurrentFileSize;
+        TotalUniqueOpenedBytes += Delta;
         return true;
     }
-    if (UniqueFinalPaths.Num() >= RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles)
+    if (AccountedFinalPathSizes.Num() >= RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles)
     {
         LastDenialReason =
-            FString::Printf(TEXT("Unique file limit exceeded: %d files; limit is %d."), UniqueFinalPaths.Num() + 1,
-                            RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles);
+            FString::Printf(TEXT("Unique file limit exceeded for path '%s': requested-count=%d, limit=%d."), *FinalPath,
+                            AccountedFinalPathSizes.Num() + 1, RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles);
         if (!bLoggedDenial)
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Restricted Assimp IO denied access: %s"), *LastDenialReason);
@@ -562,11 +617,15 @@ bool FRestrictedAssimpIOSystem::TrackUniqueFile(const FString &FinalPath, const 
         }
         return false;
     }
-    if (FileSize > RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes - TotalUniqueOpenedBytes)
+    if (TotalUniqueOpenedBytes > RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes ||
+        CurrentFileSize > RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes - TotalUniqueOpenedBytes)
     {
         LastDenialReason = FString::Printf(
-            TEXT("Total unique opened byte budget exceeded: current=%llu, requested=%llu, limit=%llu."),
-            TotalUniqueOpenedBytes, FileSize, RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes);
+            TEXT("Total unique opened byte budget exceeded for path '%s': recorded-size=0, current-size=%llu, "
+                 "delta=%llu, "
+                 "current-total=%llu, limit=%llu."),
+            *FinalPath, CurrentFileSize, CurrentFileSize, TotalUniqueOpenedBytes,
+            RuntimeAssetImport::Limits::MaximumTotalUniqueOpenedBytes);
         if (!bLoggedDenial)
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Restricted Assimp IO denied access: %s"), *LastDenialReason);
@@ -575,8 +634,8 @@ bool FRestrictedAssimpIOSystem::TrackUniqueFile(const FString &FinalPath, const 
         return false;
     }
 
-    UniqueFinalPaths.Add(Key);
-    TotalUniqueOpenedBytes += FileSize;
+    AccountedFinalPathSizes.Add(Key, CurrentFileSize);
+    TotalUniqueOpenedBytes += CurrentFileSize;
     return true;
 }
 

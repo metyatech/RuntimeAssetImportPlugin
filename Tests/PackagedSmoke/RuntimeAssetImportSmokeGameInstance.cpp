@@ -12,6 +12,7 @@
 #include "HAL/PlatformMisc.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/Base64.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
@@ -72,6 +73,69 @@ namespace
         return FFileHelper::LoadFileToArray(OutBytes, *Path);
     }
 
+    uint32 CalculateSmokePngCrc32(const uint8 *Data, const int32 ByteCount)
+    {
+        uint32 Crc = 0xffffffffu;
+        for (int32 ByteIndex = 0; ByteIndex < ByteCount; ++ByteIndex)
+        {
+            Crc ^= Data[ByteIndex];
+            for (int32 BitIndex = 0; BitIndex < 8; ++BitIndex)
+            {
+                const uint32 Mask = 0u - (Crc & 1u);
+                Crc = (Crc >> 1u) ^ (0xedb88320u & Mask);
+            }
+        }
+        return ~Crc;
+    }
+
+    void WriteSmokeBigEndianUint32(TArray<uint8> &Bytes, const int32 Offset, const uint32 Value)
+    {
+        Bytes[Offset] = static_cast<uint8>(Value >> 24u);
+        Bytes[Offset + 1] = static_cast<uint8>(Value >> 16u);
+        Bytes[Offset + 2] = static_cast<uint8>(Value >> 8u);
+        Bytes[Offset + 3] = static_cast<uint8>(Value);
+    }
+
+    bool MakeOversizedSmokePng(const FString &SmokeAssetDirectory, TArray<uint8> &OutBytes)
+    {
+        constexpr uint32 OversizedDimension = 16385;
+        if (!LoadSmokeAssetBytes(FPaths::Combine(SmokeAssetDirectory, TEXT("textures/test_red.png")), OutBytes) ||
+            OutBytes.Num() < 33 || FMemory::Memcmp(OutBytes.GetData() + 12, "IHDR", 4) != 0)
+        {
+            return false;
+        }
+
+        WriteSmokeBigEndianUint32(OutBytes, 16, OversizedDimension);
+        WriteSmokeBigEndianUint32(OutBytes, 20, 1);
+        WriteSmokeBigEndianUint32(OutBytes, 29, CalculateSmokePngCrc32(OutBytes.GetData() + 12, 17));
+        return true;
+    }
+
+    bool MakeOversizedEmbeddedSmokeGltf(const FString &SmokeAssetDirectory, const TArray<uint8> &OversizedPngBytes,
+                                        TArray<uint8> &OutGltfBytes)
+    {
+        FString GltfText;
+        TArray<uint8> OriginalPngBytes;
+        if (!FFileHelper::LoadFileToString(GltfText,
+                                           *FPaths::Combine(SmokeAssetDirectory, TEXT("test_embedded_texture.gltf"))) ||
+            !LoadSmokeAssetBytes(FPaths::Combine(SmokeAssetDirectory, TEXT("textures/test_red.png")), OriginalPngBytes))
+        {
+            return false;
+        }
+
+        const FString OriginalBase64 = FBase64::Encode(OriginalPngBytes);
+        const FString OversizedBase64 = FBase64::Encode(OversizedPngBytes);
+        if (GltfText.ReplaceInline(*OriginalBase64, *OversizedBase64, ESearchCase::CaseSensitive) != 1)
+        {
+            return false;
+        }
+
+        FTCHARToUTF8 Utf8Gltf(*GltfText);
+        OutGltfBytes.Reset(Utf8Gltf.Length());
+        OutGltfBytes.Append(reinterpret_cast<const uint8 *>(Utf8Gltf.Get()), Utf8Gltf.Length());
+        return true;
+    }
+
     bool SmokeHasNoImportedExternalTexture(const FLoadedMeshData &MeshData)
     {
         for (const FLoadedMaterialData &Material : MeshData.MaterialList)
@@ -82,6 +146,82 @@ namespace
             }
         }
         return true;
+    }
+
+    bool SmokeHasRejectedCompressedTexture(const FLoadedMeshData &MeshData)
+    {
+        const FLoadedMaterialData *Material = FindSmokeFirstUsedMaterial(MeshData);
+        return Material != nullptr && Material->ColorStatus == EColorStatus::TextureWasSetButError &&
+               Material->CompressedTextureData.IsEmpty();
+    }
+
+    FLoadedMaterialData *FindMutableSmokeFirstUsedMaterial(FLoadedMeshData &MeshData)
+    {
+        for (const FLoadedMeshNode &Node : MeshData.NodeList)
+        {
+            for (const FLoadedMeshSectionData &Section : Node.Sections)
+            {
+                if (MeshData.MaterialList.IsValidIndex(Section.MaterialIndex))
+                {
+                    return &MeshData.MaterialList[Section.MaterialIndex];
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    void RunCompressedMetadataSmoke(UWorld *World, UMaterialInterface *ParentMaterial,
+                                    const FString &SmokeAssetDirectory, bool &OutConstructionGuardValid,
+                                    bool &OutFileTextureDenied, bool &OutMemoryTextureDenied)
+    {
+        OutConstructionGuardValid = false;
+        OutFileTextureDenied = false;
+        OutMemoryTextureDenied = false;
+
+        TArray<uint8> OversizedPngBytes;
+        TArray<uint8> OversizedGltfBytes;
+        if (World == nullptr || ParentMaterial == nullptr ||
+            !MakeOversizedSmokePng(SmokeAssetDirectory, OversizedPngBytes) ||
+            !MakeOversizedEmbeddedSmokeGltf(SmokeAssetDirectory, OversizedPngBytes, OversizedGltfBytes))
+        {
+            return;
+        }
+
+        const FString OversizedGltfPath =
+            FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("RuntimeAssetImportOversizedTexture.gltf"));
+        if (FFileHelper::SaveArrayToFile(OversizedGltfBytes, *OversizedGltfPath))
+        {
+            ELoadMeshFromAssetFileResult FileResult = ELoadMeshFromAssetFileResult::Failure;
+            const FLoadedMeshData FileData = UAssetLoader::LoadMeshFromAssetFile(OversizedGltfPath, FileResult);
+            OutFileTextureDenied =
+                FileResult == ELoadMeshFromAssetFileResult::Success && SmokeHasRejectedCompressedTexture(FileData);
+        }
+        IFileManager::Get().Delete(*OversizedGltfPath, false, true);
+
+        ELoadMeshFromAssetDataResult MemoryResult = ELoadMeshFromAssetDataResult::Failure;
+        FLoadedMeshData MemoryData = UAssetLoader::LoadMeshFromAssetData(OversizedGltfBytes, MemoryResult);
+        OutMemoryTextureDenied =
+            MemoryResult == ELoadMeshFromAssetDataResult::Success && SmokeHasRejectedCompressedTexture(MemoryData);
+
+        FLoadedMaterialData *Material = FindMutableSmokeFirstUsedMaterial(MemoryData);
+        AActor *Owner = World->SpawnActor<AActor>();
+        if (Material == nullptr || Owner == nullptr)
+        {
+            if (Owner != nullptr)
+            {
+                World->DestroyActor(Owner);
+            }
+            return;
+        }
+
+        Material->ColorStatus = EColorStatus::TextureIsSet;
+        Material->CompressedTextureData = OversizedPngBytes;
+        const int32 InitialComponentCount = Owner->GetComponents().Num();
+        UDynamicMeshComponent *UnexpectedComponent =
+            UAssetConstructor::ConstructDynamicMeshComponentFromMeshData(MemoryData, ParentMaterial, Owner);
+        OutConstructionGuardValid =
+            UnexpectedComponent == nullptr && Owner->GetComponents().Num() == InitialComponentCount;
+        World->DestroyActor(Owner);
     }
 
     bool TransformComponentsNearlyEqual(const FTransform &Actual, const FTransform &Expected)
@@ -315,6 +455,9 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
         Result.bMemoryExternalAccessDenied = bMemoryExternalAccessDenied;
     }
 
+    RunCompressedMetadataSmoke(World, ParentMaterial, SmokeAssetDirectory, bCompressedMetadataGuardValid,
+                               bOversizedFileTextureDenied, bOversizedMemoryTextureDenied);
+
     World->GetTimerManager().SetTimerForNextTick(
         FTimerDelegate::CreateUObject(this, &URuntimeAssetImportSmokeGameInstance::FinalizeSmoke, World));
 }
@@ -381,7 +524,8 @@ void URuntimeAssetImportSmokeGameInstance::FinalizeSmoke(UWorld *World)
 
 void URuntimeAssetImportSmokeGameInstance::WriteResultsAndExit()
 {
-    bool bOverallSuccess = FormatResults.Num() == UE_ARRAY_COUNT(SmokeAssets);
+    bool bOverallSuccess = FormatResults.Num() == UE_ARRAY_COUNT(SmokeAssets) && bCompressedMetadataGuardValid &&
+                           bOversizedFileTextureDenied && bOversizedMemoryTextureDenied;
     TArray<TSharedPtr<FJsonValue>> JsonFormats;
     for (const FRuntimeAssetImportSmokeFormatResult &Result : FormatResults)
     {
@@ -419,6 +563,9 @@ void URuntimeAssetImportSmokeGameInstance::WriteResultsAndExit()
 
     TSharedRef<FJsonObject> JsonRoot = MakeShared<FJsonObject>();
     JsonRoot->SetBoolField(TEXT("OverallSuccess"), bOverallSuccess);
+    JsonRoot->SetBoolField(TEXT("CompressedMetadataGuardValid"), bCompressedMetadataGuardValid);
+    JsonRoot->SetBoolField(TEXT("OversizedFileTextureDenied"), bOversizedFileTextureDenied);
+    JsonRoot->SetBoolField(TEXT("OversizedMemoryTextureDenied"), bOversizedMemoryTextureDenied);
     JsonRoot->SetStringField(TEXT("EngineVersion"), FString::Printf(TEXT("%d.%d"), FEngineVersion::Current().GetMajor(),
                                                                     FEngineVersion::Current().GetMinor()));
     JsonRoot->SetArrayField(TEXT("Formats"), JsonFormats);

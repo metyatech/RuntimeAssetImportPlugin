@@ -91,6 +91,12 @@ namespace
         return bSucceeded && TotalBytesWritten == static_cast<uint64>(Bytes.Num());
     }
 
+    bool CreateTestHardLink(const FString &LinkPath, const FString &ExistingPath)
+    {
+        IFileManager::Get().MakeDirectory(*FPaths::GetPath(LinkPath), true);
+        return CreateHardLinkW(*LinkPath, *ExistingPath, nullptr) != 0;
+    }
+
     bool CreateJunction(const FString &LinkPath, const FString &TargetPath)
     {
         if (!IFileManager::Get().MakeDirectory(*LinkPath, true))
@@ -155,6 +161,10 @@ namespace
 
         ~FScopedAssetSandbox()
         {
+            for (const FString &HardLink : HardLinks)
+            {
+                DeleteFileW(*HardLink);
+            }
             for (const FString &Junction : Junctions)
             {
                 RemoveDirectoryW(*Junction);
@@ -174,6 +184,17 @@ namespace
                 return false;
             }
             Junctions.Add(LinkPath);
+            return true;
+        }
+
+        bool AddHardLink(const FString &RelativeLinkPath, const FString &ExistingPath)
+        {
+            const FString LinkPath = FPaths::Combine(RootPath, RelativeLinkPath);
+            if (!CreateTestHardLink(LinkPath, ExistingPath))
+            {
+                return false;
+            }
+            HardLinks.Add(LinkPath);
             return true;
         }
 
@@ -204,8 +225,46 @@ namespace
         FString BasePath;
         FString RootPath;
         FString OutsidePath;
+        TArray<FString> HardLinks;
         TArray<FString> Junctions;
         bool bReady = false;
+    };
+
+    class FScopedProcessCurrentDirectory
+    {
+    public:
+        explicit FScopedProcessCurrentDirectory(const FString &NewDirectory)
+        {
+            const DWORD RequiredCharacters = GetCurrentDirectoryW(0, nullptr);
+            if (RequiredCharacters == 0)
+            {
+                return;
+            }
+
+            TArray<WCHAR> Buffer;
+            Buffer.SetNumUninitialized(static_cast<int32>(RequiredCharacters));
+            if (GetCurrentDirectoryW(RequiredCharacters, Buffer.GetData()) == 0)
+            {
+                return;
+            }
+
+            OriginalDirectory = Buffer.GetData();
+            bChanged = SetCurrentDirectoryW(*NewDirectory) != 0;
+        }
+
+        ~FScopedProcessCurrentDirectory()
+        {
+            if (bChanged)
+            {
+                SetCurrentDirectoryW(*OriginalDirectory);
+            }
+        }
+
+        bool IsChanged() const { return bChanged; }
+
+    private:
+        FString OriginalDirectory;
+        bool bChanged = false;
     };
 
     bool PrepareObjWithTexture(FScopedAssetSandbox &Sandbox, const FString &TextureReference)
@@ -254,6 +313,24 @@ namespace
     {
         FTCHARToUTF8 Utf8Path(*Path);
         return IOSystem.Open(Utf8Path.Get(), "rb");
+    }
+
+    bool ExistsRestricted(FRestrictedAssimpIOSystem &IOSystem, const FString &Path)
+    {
+        FTCHARToUTF8 Utf8Path(*Path);
+        return IOSystem.Exists(Utf8Path.Get());
+    }
+
+    bool ReadRestrictedStream(Assimp::IOStream &Stream, TArray<uint8> &OutBytes)
+    {
+        const size_t FileSize = Stream.FileSize();
+        if (FileSize > static_cast<size_t>(MAX_int32))
+        {
+            return false;
+        }
+
+        OutBytes.SetNumUninitialized(static_cast<int32>(FileSize));
+        return FileSize == 0 || Stream.Read(OutBytes.GetData(), 1, FileSize) == FileSize;
     }
 } // namespace
 
@@ -635,6 +712,12 @@ bool FRestrictedAssimpIOUniqueFileBudgetDenied::RunTest(const FString &Parameter
 
     FRestrictedAssimpIOSystem IOSystem(MainPath);
     TestTrue(TEXT("IO system should initialize"), IOSystem.IsInitialized());
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    if (!TestNotNull(TEXT("The main model should occupy one opened-file slot"), MainStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
     for (int32 Index = 0; Index < RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles - 1; ++Index)
     {
         Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("file-%03d.bin"), Index));
@@ -688,6 +771,12 @@ bool FRestrictedAssimpIOTotalByteBudgetDenied::RunTest(const FString &Parameters
 
     FRestrictedAssimpIOSystem IOSystem(MainPath);
     TestTrue(TEXT("IO system should initialize"), IOSystem.IsInitialized());
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    if (!TestNotNull(TEXT("The main model should contribute to the opened-byte budget"), MainStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
     for (int32 Index = 0; Index < 3; ++Index)
     {
         Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("budget-%d.bin"), Index));
@@ -711,6 +800,344 @@ bool FRestrictedAssimpIOTotalByteBudgetDenied::RunTest(const FString &Parameters
     Assimp::IOStream *Denied = OpenRestricted(IOSystem, TEXT("budget-3.bin"));
     TestNull(TEXT("The first file beyond the total byte budget should be denied"), Denied);
     return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOExistsDoesNotConsumeUniqueFileBudget,
+                                 "RuntimeAssetImport.Security.Limits.ExistsDoesNotConsumeUniqueFileBudget",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOExistsDoesNotConsumeUniqueFileBudget::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("OBJ should be written"), Sandbox.WriteRootFile(TEXT("model.obj"), TriangleObj)))
+    {
+        return false;
+    }
+
+    for (int32 Index = 0; Index < RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles; ++Index)
+    {
+        if (!SaveUtf8(FPaths::Combine(Sandbox.GetRootPath(), FString::Printf(TEXT("exists-%03d.bin"), Index)),
+                      TEXT("x")))
+        {
+            AddError(TEXT("Could not prepare Exists unique-file assets."));
+            return false;
+        }
+    }
+
+    FRestrictedAssimpIOSystem IOSystem(MainPath);
+    bool Passed = TestTrue(TEXT("IO system should initialize"), IOSystem.IsInitialized());
+    for (int32 Index = 0; Index < RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles; ++Index)
+    {
+        Passed &= TestTrue(*FString::Printf(TEXT("Exists should validate file %d without accounting it"), Index),
+                           ExistsRestricted(IOSystem, FString::Printf(TEXT("exists-%03d.bin"), Index)));
+    }
+
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    if (!TestNotNull(TEXT("Main model should open after all Exists probes"), MainStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
+    for (int32 Index = 0; Index < RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles - 1; ++Index)
+    {
+        Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("exists-%03d.bin"), Index));
+        if (!TestNotNull(*FString::Printf(TEXT("Open %d should fit after Exists probes"), Index), Stream))
+        {
+            return false;
+        }
+        IOSystem.Close(Stream);
+    }
+
+    AddExpectedError(TEXT("Unique file limit exceeded"), EAutomationExpectedErrorFlags::Contains, 1);
+    Assimp::IOStream *Denied = OpenRestricted(
+        IOSystem, FString::Printf(TEXT("exists-%03d.bin"), RuntimeAssetImport::Limits::MaximumUniqueOpenedFiles - 1));
+    Passed &= TestNull(TEXT("Only the first Open beyond the unique-file budget should be denied"), Denied);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOExistsDoesNotConsumeByteBudget,
+                                 "RuntimeAssetImport.Security.Limits.ExistsDoesNotConsumeByteBudget",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOExistsDoesNotConsumeByteBudget::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("OBJ should be written"), Sandbox.WriteRootFile(TEXT("model.obj"), TriangleObj)))
+    {
+        return false;
+    }
+
+    for (int32 Index = 0; Index < 4; ++Index)
+    {
+        if (!TestTrue(*FString::Printf(TEXT("Exists budget file %d should be created"), Index),
+                      CreateSparseFile(
+                          FPaths::Combine(Sandbox.GetRootPath(), FString::Printf(TEXT("exists-budget-%d.bin"), Index)),
+                          RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes)))
+        {
+            return false;
+        }
+    }
+
+    FRestrictedAssimpIOSystem IOSystem(MainPath);
+    bool Passed = TestTrue(TEXT("IO system should initialize"), IOSystem.IsInitialized());
+    for (int32 Index = 0; Index < 4; ++Index)
+    {
+        Passed &= TestTrue(*FString::Printf(TEXT("Exists should not account bytes for file %d"), Index),
+                           ExistsRestricted(IOSystem, FString::Printf(TEXT("exists-budget-%d.bin"), Index)));
+    }
+
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    if (!TestNotNull(TEXT("Main model should open after byte-budget Exists probes"), MainStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("exists-budget-%d.bin"), Index));
+        if (!TestNotNull(*FString::Printf(TEXT("Byte-budget Open %d should fit"), Index), Stream))
+        {
+            return false;
+        }
+        IOSystem.Close(Stream);
+    }
+
+    AddExpectedError(TEXT("Total unique opened byte budget exceeded"), EAutomationExpectedErrorFlags::Contains, 1);
+    Assimp::IOStream *Denied = OpenRestricted(IOSystem, TEXT("exists-budget-3.bin"));
+    Passed &= TestNull(TEXT("Exists probes should not change the later Open success count"), Denied);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOReopenGrowthConsumesDelta,
+                                 "RuntimeAssetImport.Security.Limits.ReopenGrowthConsumesDelta",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOReopenGrowthConsumesDelta::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    const FString GrowingPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("growing.bin"));
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("OBJ should be written"), Sandbox.WriteRootFile(TEXT("model.obj"), TriangleObj)) ||
+        !TestTrue(TEXT("Initial growing file should be created"), CreateSparseFile(GrowingPath, 1)))
+    {
+        return false;
+    }
+
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        if (!TestTrue(*FString::Printf(TEXT("Growth budget file %d should be created"), Index),
+                      CreateSparseFile(
+                          FPaths::Combine(Sandbox.GetRootPath(), FString::Printf(TEXT("growth-budget-%d.bin"), Index)),
+                          RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes)))
+        {
+            return false;
+        }
+    }
+
+    FRestrictedAssimpIOSystem IOSystem(MainPath);
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    Assimp::IOStream *GrowingStream = OpenRestricted(IOSystem, GrowingPath);
+    if (!TestNotNull(TEXT("Main model should open"), MainStream) ||
+        !TestNotNull(TEXT("Initial growing file should open"), GrowingStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
+    IOSystem.Close(GrowingStream);
+
+    if (!TestTrue(TEXT("Growing file should be enlarged"),
+                  CreateSparseFile(GrowingPath, RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes)))
+    {
+        return false;
+    }
+    GrowingStream = OpenRestricted(IOSystem, GrowingPath);
+    if (!TestNotNull(TEXT("Enlarged file should reopen and account its delta"), GrowingStream))
+    {
+        return false;
+    }
+    IOSystem.Close(GrowingStream);
+
+    for (int32 Index = 0; Index < 2; ++Index)
+    {
+        Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("growth-budget-%d.bin"), Index));
+        if (!TestNotNull(*FString::Printf(TEXT("Growth budget file %d should fit"), Index), Stream))
+        {
+            return false;
+        }
+        IOSystem.Close(Stream);
+    }
+
+    AddExpectedError(TEXT("Total unique opened byte budget exceeded"), EAutomationExpectedErrorFlags::Contains, 1);
+    Assimp::IOStream *Denied = OpenRestricted(IOSystem, TEXT("growth-budget-2.bin"));
+    TestNull(TEXT("Growth delta should consume budget on reopen"), Denied);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOReopenShrinkDoesNotRefundBudget,
+                                 "RuntimeAssetImport.Security.Limits.ReopenShrinkDoesNotRefundBudget",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOReopenShrinkDoesNotRefundBudget::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    const FString ShrinkingPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("shrinking.bin"));
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("OBJ should be written"), Sandbox.WriteRootFile(TEXT("model.obj"), TriangleObj)) ||
+        !TestTrue(TEXT("Initial shrinking file should be created"),
+                  CreateSparseFile(ShrinkingPath, RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes)))
+    {
+        return false;
+    }
+
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        if (!TestTrue(*FString::Printf(TEXT("Shrink budget file %d should be created"), Index),
+                      CreateSparseFile(
+                          FPaths::Combine(Sandbox.GetRootPath(), FString::Printf(TEXT("shrink-budget-%d.bin"), Index)),
+                          RuntimeAssetImport::Limits::MaximumAuxiliaryFileBytes)))
+        {
+            return false;
+        }
+    }
+
+    FRestrictedAssimpIOSystem IOSystem(MainPath);
+    Assimp::IOStream *MainStream = OpenRestricted(IOSystem, MainPath);
+    Assimp::IOStream *ShrinkingStream = OpenRestricted(IOSystem, ShrinkingPath);
+    if (!TestNotNull(TEXT("Main model should open"), MainStream) ||
+        !TestNotNull(TEXT("Initial shrinking file should open"), ShrinkingStream))
+    {
+        return false;
+    }
+    IOSystem.Close(MainStream);
+    IOSystem.Close(ShrinkingStream);
+
+    if (!TestTrue(TEXT("Shrinking file should be reduced"), CreateSparseFile(ShrinkingPath, 1)))
+    {
+        return false;
+    }
+    ShrinkingStream = OpenRestricted(IOSystem, ShrinkingPath);
+    if (!TestNotNull(TEXT("Shrunken file should reopen without refunding budget"), ShrinkingStream))
+    {
+        return false;
+    }
+    IOSystem.Close(ShrinkingStream);
+
+    for (int32 Index = 0; Index < 2; ++Index)
+    {
+        Assimp::IOStream *Stream = OpenRestricted(IOSystem, FString::Printf(TEXT("shrink-budget-%d.bin"), Index));
+        if (!TestNotNull(*FString::Printf(TEXT("Shrink budget file %d should fit"), Index), Stream))
+        {
+            return false;
+        }
+        IOSystem.Close(Stream);
+    }
+
+    AddExpectedError(TEXT("Total unique opened byte budget exceeded"), EAutomationExpectedErrorFlags::Contains, 1);
+    Assimp::IOStream *Denied = OpenRestricted(IOSystem, TEXT("shrink-budget-2.bin"));
+    TestNull(TEXT("Shrinking a reopened file should not refund its prior accounting"), Denied);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOCurrentWorkingDirectoryDoesNotAffectResolution,
+                                 "RuntimeAssetImport.Security.Sandbox.CurrentWorkingDirectoryDoesNotAffectResolution",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOCurrentWorkingDirectoryDoesNotAffectResolution::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    const FString RootTexturePath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("textures/red.png"));
+    const FString DecoyDirectory = FPaths::Combine(Sandbox.GetRootPath(), TEXT("decoy"));
+    const FString DecoyTexturePath = FPaths::Combine(DecoyDirectory, TEXT("textures/red.png"));
+    const TArray<uint8> DecoyBytes = {0x64, 0x65, 0x63, 0x6f, 0x79};
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("OBJ should be written"), Sandbox.WriteRootFile(TEXT("model.obj"), TriangleObj)) ||
+        !TestTrue(TEXT("Root texture should copy"), Sandbox.CopyRedPng(RootTexturePath)) ||
+        !TestTrue(TEXT("Decoy directory should be created"),
+                  IFileManager::Get().MakeDirectory(*FPaths::GetPath(DecoyTexturePath), true)) ||
+        !TestTrue(TEXT("Decoy texture should be written"), FFileHelper::SaveArrayToFile(DecoyBytes, *DecoyTexturePath)))
+    {
+        return false;
+    }
+
+    TArray<uint8> ExpectedBytes;
+    if (!TestTrue(TEXT("Expected root texture should be readable"),
+                  FFileHelper::LoadFileToArray(ExpectedBytes, *RootTexturePath)))
+    {
+        return false;
+    }
+
+    FRestrictedAssimpIOSystem IOSystem(MainPath);
+    FScopedProcessCurrentDirectory CurrentDirectory(DecoyDirectory);
+    if (!TestTrue(TEXT("Process current directory should change for the regression test"),
+                  CurrentDirectory.IsChanged()))
+    {
+        return false;
+    }
+
+    Assimp::IOStream *Stream = OpenRestricted(IOSystem, TEXT("textures/red.png"));
+    if (!TestNotNull(TEXT("Relative texture should resolve from the model root"), Stream))
+    {
+        return false;
+    }
+    TArray<uint8> ActualBytes;
+    const bool bRead = ReadRestrictedStream(*Stream, ActualBytes);
+    IOSystem.Close(Stream);
+    bool Passed = TestTrue(TEXT("Resolved texture should be readable"), bRead);
+    Passed &= TestTrue(TEXT("Process CWD must not select the decoy texture"), ActualBytes == ExpectedBytes);
+    return Passed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOHardLinkEscapeDenied,
+                                 "RuntimeAssetImport.Security.Sandbox.HardLinkEscapeDenied",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRestrictedAssimpIOHardLinkEscapeDenied::RunTest(const FString &Parameters)
+{
+    FScopedAssetSandbox Sandbox;
+    const FString MainPath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("model.obj"));
+    const FString OutsideTexturePath = FPaths::Combine(Sandbox.GetOutsidePath(), TEXT("red.png"));
+    const FString LinkedTexturePath = FPaths::Combine(Sandbox.GetRootPath(), TEXT("linked.png"));
+    if (!TestTrue(TEXT("Sandbox should initialize"), Sandbox.IsReady()) ||
+        !TestTrue(TEXT("Outside PNG should copy"), Sandbox.CopyRedPng(OutsideTexturePath)) ||
+        !TestTrue(TEXT("Hard link should be created"), Sandbox.AddHardLink(TEXT("linked.png"), OutsideTexturePath)) ||
+        !TestTrue(TEXT("Hard-link OBJ should be written"), PrepareObjWithTexture(Sandbox, TEXT("linked.png"))))
+    {
+        return false;
+    }
+
+    TArray<uint8> OriginalOutsideBytes;
+    if (!TestTrue(TEXT("Outside original should be readable"),
+                  FFileHelper::LoadFileToArray(OriginalOutsideBytes, *OutsideTexturePath)))
+    {
+        return false;
+    }
+
+    AddExpectedError(TEXT("Restricted Assimp IO denied access"), EAutomationExpectedErrorFlags::Contains, 2);
+    FRestrictedAssimpIOSystem DirectIO(MainPath);
+    Assimp::IOStream *DeniedStream = OpenRestricted(DirectIO, LinkedTexturePath);
+    bool Passed = TestNull(TEXT("Auxiliary hard links should be denied directly"), DeniedStream);
+    Passed &= TestTrue(TEXT("Denial should identify multiple hard links"),
+                       DirectIO.GetLastDenialReason().Contains(TEXT("multiple hard links")));
+
+    AddExpectedError(TEXT("is external and is not loaded"), EAutomationExpectedErrorFlags::Contains, 1);
+    ELoadMeshFromAssetFileResult Result = ELoadMeshFromAssetFileResult::Failure;
+    const FLoadedMeshData MeshData = LoadSandboxObj(Sandbox, Result);
+    Passed &=
+        TestEqual(TEXT("Hard-link denial may still load geometry"), Result, ELoadMeshFromAssetFileResult::Success);
+    Passed &= AssertNoExternalTexture(*this, TEXT("Hard-link escape"), MeshData);
+
+    TArray<uint8> FinalOutsideBytes;
+    Passed &= TestTrue(TEXT("Outside original should remain readable"),
+                       FFileHelper::LoadFileToArray(FinalOutsideBytes, *OutsideTexturePath));
+    Passed &= TestTrue(TEXT("Outside original should remain unchanged"), FinalOutsideBytes == OriginalOutsideBytes);
+    return Passed;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestrictedAssimpIOStreamReadOnlyBounds,

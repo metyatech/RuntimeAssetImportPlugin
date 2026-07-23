@@ -17,6 +17,7 @@ public class RuntimeAssetImportTest : ModuleRules
                 "Engine",
                 "UnrealEd",
                 "GeometryFramework",
+                "ImageWrapper",
                 "ProceduralMeshComponent",
                 "assimp",
             }

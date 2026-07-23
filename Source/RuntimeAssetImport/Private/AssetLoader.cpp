@@ -3,6 +3,7 @@
 #include "AssetLoader.h"
 
 #include "AssetImportLimits.h"
+#include "CompressedTextureValidation.h"
 #include "HasFeatureFix.h"
 #include "ImageUtils.h"
 #include "LogAssetLoader.h"
@@ -245,6 +246,17 @@ namespace
         {
             UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d embedded texture could not be encoded."),
                    MaterialIndex);
+            return true;
+        }
+
+        RuntimeAssetImport::CompressedTextureValidation::FCompressedTextureMetadata TextureMetadata;
+        FString TextureValidationError;
+        if (!RuntimeAssetImport::CompressedTextureValidation::ValidateCompressedTexturePayload(
+                OutMaterialData.CompressedTextureData, TextureMetadata, TextureValidationError))
+        {
+            UE_LOG(LogAssetLoader, Warning, TEXT("Material index %d compressed texture was rejected: %s"),
+                   MaterialIndex, *TextureValidationError);
+            OutMaterialData.CompressedTextureData.Reset();
             return true;
         }
 

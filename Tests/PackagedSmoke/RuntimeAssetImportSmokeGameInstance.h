@@ -57,5 +57,8 @@ private:
 
     FDelegateHandle WorldInitializationHandle;
     TArray<FRuntimeAssetImportSmokeFormatResult> FormatResults;
+    bool bCompressedMetadataGuardValid = false;
+    bool bOversizedFileTextureDenied = false;
+    bool bOversizedMemoryTextureDenied = false;
     bool bSmokeStarted = false;
 };

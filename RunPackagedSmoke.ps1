@@ -578,6 +578,16 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
     {
         throw "Packaged smoke reported OverallSuccess=false: $SmokeResultPath"
     }
+    foreach ($RequiredRootBooleanField in @(
+            'CompressedMetadataGuardValid',
+            'OversizedFileTextureDenied',
+            'OversizedMemoryTextureDenied'))
+    {
+        if ($SmokeResult.$RequiredRootBooleanField -ne $true)
+        {
+            throw "Packaged smoke root field is not true: $RequiredRootBooleanField"
+        }
+    }
     $ExpectedFormats = @(
         'FBX',
         'OBJ',
@@ -646,7 +656,7 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
 
     Write-Host "Packaged smoke JSON: $SmokeResultPath" -ForegroundColor Green
     Write-Host ("Packaged Assimp DLL: {0}" -f $PackagedDlls[0]) -ForegroundColor Green
-    Write-Host 'Packaged Shipping smoke passed for the five baseline formats, external and embedded textures, external buffers, material values, and memory I/O denial.' -ForegroundColor Green
+    Write-Host 'Packaged Shipping smoke passed for the baseline formats, external and embedded resources, material values, memory I/O denial, and compressed texture metadata guards.' -ForegroundColor Green
     $CompletedSuccessfully = $true
 }
 finally

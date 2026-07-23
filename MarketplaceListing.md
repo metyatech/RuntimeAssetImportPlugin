@@ -62,6 +62,8 @@ Important limitations:
 - In-memory imports support self-contained data and embedded textures only; external file references are not resolved
 - Only the first diffuse/base-color texture, first UV channel, and first vertex-color channel are used
 - File and texture size limits apply as documented
+- Compressed image dimensions and pixel counts are validated before texture decoding
+- Auxiliary files with multiple hard links are rejected
 - Runtime-created meshes are local and are not automatically replicated
 - ProceduralMeshComponent can cause movement/network issues in multiplayer; DynamicMeshComponent is recommended
 

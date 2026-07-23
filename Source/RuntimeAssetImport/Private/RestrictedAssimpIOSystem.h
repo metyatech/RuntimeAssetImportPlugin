@@ -58,11 +58,13 @@ private:
                      FString &OutFinalPath) const;
     bool ResolveDirectory(const FString &CallerPath, FString &OutFinalPath) const;
     bool MakeAbsoluteCandidatePath(const FString &CallerPath, FString &OutAbsolutePath) const;
-    bool TrackUniqueFile(const FString &FinalPath, uint64 FileSize) const;
+    bool AccountOpenedFile(const FString &FinalPath, uint64 CurrentFileSize) const;
     bool ValidateCallerPath(const FString &CallerPath, FString &OutReason) const;
     void RecordDenial(const FString &CallerPath, const FString &Reason) const;
 
     bool bInitialized = false;
+    FString RequestedMainModelCallerPath;
+    FString RequestedModelRootCallerPath;
     FString RequestedMainModelAbsolutePath;
     FString RequestedModelRootAbsolutePath;
     FString FinalModelRootPath;
@@ -72,7 +74,7 @@ private:
     mutable FCriticalSection StateMutex;
     mutable FString LastDenialReason;
     mutable bool bLoggedDenial = false;
-    mutable TSet<FString> UniqueFinalPaths;
+    mutable TMap<FString, uint64> AccountedFinalPathSizes;
     mutable uint64 TotalUniqueOpenedBytes = 0;
 };
 
