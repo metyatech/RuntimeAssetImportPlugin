@@ -8,7 +8,7 @@
 	"EngineVersion": "5.4.0",
 	"CreatedBy": "metyatech",
 	"CreatedByURL": "https://github.com/metyatech",
-	"DocsURL": "https://github.com/metyatech/RuntimeAssetImportPlugin/blob/master/README.md",
+	"DocsURL": "https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/",
 	"MarketplaceURL": "",
 	"SupportURL": "https://github.com/metyatech/RuntimeAssetImportPlugin/issues",
 	"CanContainContent": true,

@@ -68,7 +68,7 @@ Network Replicated: No
 Development Platform: Windows Win64
 Target Platform: Windows Win64
 Third Party: Assimp 6.0.5, BSD-3-Clause
-Documentation: https://github.com/metyatech/RuntimeAssetImportPlugin/blob/master/README.md
+Documentation: https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/
 Support: https://github.com/metyatech/RuntimeAssetImportPlugin/issues
 Example Project: None for the initial release
 Test Host: https://github.com/metyatech/RuntimeAssetImportSample
