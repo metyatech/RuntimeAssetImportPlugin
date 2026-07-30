@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "pluginName": "RuntimeAssetImport",
+  "descriptorFile": "RuntimeAssetImport.uplugin",
+  "engineVersions": [
+    "5.4",
+    "5.5",
+    "5.7",
+    "5.8"
+  ],
+  "platforms": [
+    "Win64"
+  ],
+  "distributionModules": [
+    "RuntimeAssetImport"
+  ],
+  "enabledPluginDependencies": [
+    "ProceduralMeshComponent"
+  ],
+  "publisher": {
+    "name": "metyatech",
+    "url": "https://github.com/metyatech",
+    "copyrightNotice": "// Copyright (c) 2026 metyatech. All rights reserved."
+  },
+  "listingId": "19cb2daa-b018-46ae-b28c-7bfe21075c4a",
+  "documentationUrl": "https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/",
+  "supportUrl": "https://github.com/metyatech/RuntimeAssetImportPlugin/issues",
+  "content": {
+    "mode": "plugin"
+  },
+  "includeDirectories": [
+    "Config",
+    "Content",
+    "Resources",
+    "Source/RuntimeAssetImport",
+    "Source/ThirdParty/assimp"
+  ],
+  "includeFiles": [
+    "RuntimeAssetImport.uplugin",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "requiredPackageFiles": [
+    "RuntimeAssetImport.uplugin",
+    "Config/FilterPlugin.ini",
+    "Content/AssetImporterMeshMaterial.uasset",
+    "Resources/Icon128.png",
+    "Source/RuntimeAssetImport/RuntimeAssetImport.Build.cs",
+    "Source/ThirdParty/assimp/assimp.Build.cs",
+    "Source/ThirdParty/assimp/BUILD-INFO.json",
+    "Source/ThirdParty/assimp/LICENSE",
+    "Source/ThirdParty/assimp/Bin/Win64/assimp-vc143-mt.dll",
+    "Source/ThirdParty/assimp/Lib/Win64/assimp-vc143-mt.lib",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "customDistributionPaths": [
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "thirdPartyLicenseSets": [
+    {
+      "root": "Source/ThirdParty/assimp/LICENSES",
+      "files": [
+        "assimp/LICENSE",
+        "contrib/Open3DGC/LICENSE.txt",
+        "contrib/clipper/License.txt",
+        "contrib/earcut-hpp/LICENSE",
+        "contrib/openddlparser/LICENSE",
+        "contrib/poly2tri/LICENSE",
+        "contrib/pugixml/LICENSE.md",
+        "contrib/rapidjson/license.txt",
+        "contrib/stb/LICENSE.txt",
+        "contrib/unzip/MiniZip64_info.txt",
+        "contrib/utf8cpp/doc/LICENSE",
+        "contrib/zlib/LICENSE"
+      ]
+    }
+  ],
+  "forbiddenPackagePatterns": [
+    "^Source/RuntimeAssetImportTest(?:/|$)",
+    "^(BuildAssimpForPlugin\\.ps1|PackageForFab\\.ps1|RunPackagedSmoke\\.ps1|MarketplaceListing\\.md|FabSubmissionChecklist\\.md|LICENSE-MIT-LEGACY)$",
+    "^Tests(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/contrib/draco(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/contrib/googletest(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/packaging(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/port(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/test(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES/contrib/zlib/contrib/dotzlib(?:/|$)",
+    "(^|/)assimp\\.exe$"
+  ],
+  "buildLogFailPatterns": []
+}
