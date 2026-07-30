@@ -118,7 +118,7 @@ jobs:
           $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksumText = [System.IO.File]::ReadAllText($checksumFiles[0]).TrimEnd("`r", "`n")
           $checksumMatch = [System.Text.RegularExpressions.Regex]::Match(
-            $checksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^`r`n]+)$')
+            $checksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^\r\n]+)$')
           if (-not $checksumMatch.Success -or $checksumMatch.Groups['Hash'].Value -cne $actualHash -or
               $checksumMatch.Groups['Name'].Value -cne $zipName) {
             throw 'Fab release checksum sidecar does not match the generated ZIP.'
