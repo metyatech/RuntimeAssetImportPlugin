@@ -364,7 +364,7 @@ function Resolve-ReleaseArtifactSet
 
     $ChecksumText = [System.IO.File]::ReadAllText($ChecksumPath).TrimEnd("`r", "`n")
     $ChecksumMatch = [System.Text.RegularExpressions.Regex]::Match(
-        $ChecksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^`r`n]+)$')
+        $ChecksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^\r\n]+)$')
     if (-not $ChecksumMatch.Success -or $ChecksumMatch.Groups['Name'].Value -cne $ZipName)
     {
         throw "Checksum sidecar must contain '<lowercase SHA-256><two spaces><ZIP filename>': $ChecksumPath"
