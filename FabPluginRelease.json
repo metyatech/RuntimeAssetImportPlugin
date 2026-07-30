@@ -22,6 +22,22 @@
     "url": "https://github.com/metyatech",
     "copyrightNotice": "// Copyright (c) 2026 metyatech. All rights reserved."
   },
+  "sourceCopyrightOverrides": [
+    {
+      "path": "Source/RuntimeAssetImport/Private/RuntimeAssetImport.cpp",
+      "notices": [
+        "// Copyright Epic Games, Inc. All Rights Reserved.",
+        "// Copyright (c) 2026 metyatech. All rights reserved."
+      ]
+    },
+    {
+      "path": "Source/RuntimeAssetImport/Public/RuntimeAssetImport.h",
+      "notices": [
+        "// Copyright Epic Games, Inc. All Rights Reserved.",
+        "// Copyright (c) 2026 metyatech. All rights reserved."
+      ]
+    }
+  ],
   "listingId": "19cb2daa-b018-46ae-b28c-7bfe21075c4a",
   "documentationUrl": "https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/",
   "supportUrl": "https://github.com/metyatech/RuntimeAssetImportPlugin/issues",

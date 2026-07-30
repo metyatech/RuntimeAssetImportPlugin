@@ -1,4 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright (c) 2026 metyatech. All rights reserved.
 
 #pragma once
 

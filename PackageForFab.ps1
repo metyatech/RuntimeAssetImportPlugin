@@ -15,8 +15,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ExpectedToolCommit = '4712566f978fb571d6b8d4e743551d8f5cd8c5ff'
-$ExpectedToolVersion = '0.2.0'
+$ExpectedToolCommit = 'de784111d9e88a3e13205494aa56ccb12a8740f3'
+$ExpectedToolVersion = '0.3.1'
 
 function ConvertTo-NativeArgument {
     param([AllowEmptyString()][string]$Argument)

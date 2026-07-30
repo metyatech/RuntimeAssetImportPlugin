@@ -24,7 +24,7 @@ $CreatedDefaultWorkDirectory = [string]::IsNullOrWhiteSpace($WorkDirectory)
 $WorkRoot = $null
 $CompletedSuccessfully = $false
 $ExpectedSampleHead = 'b4c78058993e68a62fc9c16b673aec65ee668573'
-$ExpectedToolVersion = '0.2.0'
+$ExpectedToolVersion = '0.3.1'
 
 function ConvertTo-NativeArgument
 {

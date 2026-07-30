@@ -1,3 +1,5 @@
+// Copyright (c) 2026 metyatech. All rights reserved.
+
 #pragma once
 
 // MSVC does not define __has_feature (it is a Clang extension).

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 metyatech. All rights reserved.
+
 #pragma once
 
 #include "Logging/LogMacros.h"
