@@ -281,7 +281,8 @@ function Assert-SampleRepository
     $ResolvedRoot = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\', '/')
     $GitRoot = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
         -Arguments @('rev-parse', '--show-toplevel')
-    if (-not $GitRoot.TrimEnd('\', '/').Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase))
+    $NormalizedGitRoot = [System.IO.Path]::GetFullPath($GitRoot).TrimEnd('\', '/')
+    if (-not $NormalizedGitRoot.Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase))
     {
         throw "SampleRoot must be the exact Git repository root. Git reported '$GitRoot' for '$ResolvedRoot'."
     }

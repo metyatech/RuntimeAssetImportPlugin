@@ -179,7 +179,8 @@ function Assert-ReleaseToolsRoot {
 
     $repositoryRoot = Invoke-Git -GitPath $GitPath -RepositoryRoot $ToolRoot -Arguments @('rev-parse', '--show-toplevel')
     $resolvedToolRoot = [System.IO.Path]::GetFullPath($ToolRoot).TrimEnd('\', '/')
-    if (-not $repositoryRoot.TrimEnd('\', '/').Equals($resolvedToolRoot,
+    $normalizedRepositoryRoot = [System.IO.Path]::GetFullPath($repositoryRoot).TrimEnd('\', '/')
+    if (-not $normalizedRepositoryRoot.Equals($resolvedToolRoot,
             [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Release tools root must be the Git repository root. Git reported '$repositoryRoot' for '$ToolRoot'."
     }
