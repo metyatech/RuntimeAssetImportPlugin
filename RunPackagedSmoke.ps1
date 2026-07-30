@@ -636,6 +636,17 @@ try
     }
     $SourceSampleRoot = Assert-SampleRepository `
         -RepositoryRoot ([System.IO.Path]::GetFullPath($SourceSampleCandidate)) -GitPath $GitPath
+    $SourceSampleConfigRoot = Join-Path $SourceSampleRoot 'Config'
+    Assert-RequiredDirectory -Path $SourceSampleConfigRoot
+    $SourceSampleConfigHashes = @(
+        foreach ($ConfigFile in @(Get-ChildItem -LiteralPath $SourceSampleConfigRoot -File -Recurse))
+        {
+            [pscustomobject][ordered]@{
+                RelativePath = $ConfigFile.FullName.Substring($SourceSampleConfigRoot.Length).TrimStart('\', '/')
+                Hash = (Get-FileHash -LiteralPath $ConfigFile.FullName -Algorithm SHA256).Hash
+            }
+        }
+    )
     $ProductHead = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $PSScriptRoot `
         -Arguments @('rev-parse', 'HEAD')
 
@@ -773,6 +784,7 @@ try
 
 [/Script/UnrealEd.ProjectPackagingSettings]
 +DirectoriesToAlwaysStageAsNonUFS=(Path="SmokeAssets")
++DirectoriesToAlwaysCook=(Path="/RuntimeAssetImport")
 '@ + "`n"
     [System.IO.File]::WriteAllText($DefaultGamePath, $DefaultGameText, $Utf8NoBom)
 
@@ -784,12 +796,51 @@ try
 [/Script/EngineSettings.GameMapsSettings]
 GameDefaultMap=/Game/Smoke/SmokeMap
 GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameInstance
-
-[/Script/UnrealEd.ProjectPackagingSettings]
-+DirectoriesToAlwaysStageAsNonUFS=(Path="SmokeAssets")
-+DirectoriesToAlwaysCook=(Path="/RuntimeAssetImport")
 '@
     [System.IO.File]::WriteAllText($DefaultEnginePath, $DefaultEngineText + $SmokeConfiguration + "`n", $Utf8NoBom)
+
+    $DefaultGameText = [System.IO.File]::ReadAllText($DefaultGamePath)
+    $DefaultEngineText = [System.IO.File]::ReadAllText($DefaultEnginePath)
+    $ProjectPackagingSectionPattern = '(?m)^\[/Script/UnrealEd\.ProjectPackagingSettings\]\r?$'
+    $DirectoriesToAlwaysCookPattern = '(?m)^\+DirectoriesToAlwaysCook=\(Path="/RuntimeAssetImport"\)\r?$'
+    $SmokeAssetsStagePattern = '(?m)^\+DirectoriesToAlwaysStageAsNonUFS=\(Path="SmokeAssets"\)\r?$'
+    $GameMapsSectionPattern = '(?m)^\[/Script/EngineSettings\.GameMapsSettings\]\r?$'
+    $DefaultGameProjectPackagingCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $ProjectPackagingSectionPattern).Count
+    $DefaultGameCookCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $DirectoriesToAlwaysCookPattern).Count
+    $DefaultGameSmokeAssetsCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $SmokeAssetsStagePattern).Count
+    $DefaultEngineProjectPackagingCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultEngineText, $ProjectPackagingSectionPattern).Count
+    $DefaultEngineGameMapsCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultEngineText, $GameMapsSectionPattern).Count
+    if ($DefaultGameProjectPackagingCount -ne 1 -or $DefaultGameCookCount -ne 1 -or
+        $DefaultGameSmokeAssetsCount -ne 1 -or $DefaultEngineProjectPackagingCount -ne 0 -or
+        $DefaultEngineGameMapsCount -ne 1)
+    {
+        throw ("Temp Sample packaging configuration is invalid: DefaultGame ProjectPackagingSettings={0}, " +
+            "Cook={1}, SmokeAssets={2}; DefaultEngine ProjectPackagingSettings={3}, GameMapsSettings={4}.") -f
+            $DefaultGameProjectPackagingCount, $DefaultGameCookCount, $DefaultGameSmokeAssetsCount,
+            $DefaultEngineProjectPackagingCount, $DefaultEngineGameMapsCount
+    }
+
+    $CurrentSourceSampleConfigFiles = @(Get-ChildItem -LiteralPath $SourceSampleConfigRoot -File -Recurse)
+    if ($CurrentSourceSampleConfigFiles.Count -ne $SourceSampleConfigHashes.Count)
+    {
+        throw 'Source Sample Config file count changed during packaged smoke preparation.'
+    }
+    foreach ($ExpectedConfig in $SourceSampleConfigHashes)
+    {
+        $CurrentConfigPath = Join-Path $SourceSampleConfigRoot $ExpectedConfig.RelativePath
+        Assert-RequiredFile -Path $CurrentConfigPath
+        $CurrentConfigHash = (Get-FileHash -LiteralPath $CurrentConfigPath -Algorithm SHA256).Hash
+        if ($CurrentConfigHash -cne $ExpectedConfig.Hash)
+        {
+            throw "Source Sample Config hash changed: $($ExpectedConfig.RelativePath)"
+        }
+    }
+    Write-Host 'Temp Sample packaging configuration and source Config hashes validated.' -ForegroundColor Green
 
     $SmokeAssetDestination = Join-Path $TempSampleRoot 'Content\SmokeAssets'
     [void][System.IO.Directory]::CreateDirectory($SmokeAssetDestination)

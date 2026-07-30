@@ -13,13 +13,10 @@ DEFINE_LOG_CATEGORY(LogRuntimeAssetImport);
 void FRuntimeAssetImportModule::StartupModule()
 {
     static const TCHAR *AssimpDllName = TEXT("assimp-vc143-mt.dll");
-    AssimpDllHandle = FPlatformProcess::GetDllHandle(AssimpDllName);
-    if (AssimpDllHandle != nullptr)
-    {
-        return;
-    }
-
-    const TArray<FString> CandidatePaths = {FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
+    const FString BaseDirCandidate = FPaths::Combine(FPlatformProcess::BaseDir(), AssimpDllName);
+    const TArray<FString> CandidatePaths = {BaseDirCandidate,
+                                            FString(AssimpDllName),
+                                            FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
                                                             TEXT("Source/ThirdParty/assimp/Bin/Win64"), AssimpDllName),
                                             FPaths::Combine(FPaths::EnginePluginsDir(),
                                                             TEXT("Marketplace/RuntimeAssetImport"),
@@ -36,7 +33,7 @@ void FRuntimeAssetImportModule::StartupModule()
     if (AssimpDllHandle == nullptr)
     {
         UE_LOG(LogRuntimeAssetImport, Error,
-               TEXT("Failed to load '%s' from the target output directory or bundled Win64 paths."), AssimpDllName);
+               TEXT("Failed to load '%s'. BaseDir candidate: '%s'."), AssimpDllName, *BaseDirCandidate);
     }
 }
 
