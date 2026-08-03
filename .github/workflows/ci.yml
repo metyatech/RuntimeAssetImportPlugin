@@ -26,9 +26,18 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: metyatech/RuntimeAssetImportSample
+          ref: b4c78058993e68a62fc9c16b673aec65ee668573
           path: RuntimeAssetImportSample
           fetch-depth: 0
           submodules: recursive
+
+      - name: Checkout Fab release tools
+        uses: actions/checkout@v6
+        with:
+          repository: metyatech/fab-plugin-release-tools
+          ref: de784111d9e88a3e13205494aa56ccb12a8740f3
+          path: fab-plugin-release-tools
+          fetch-depth: 1
 
       - name: Link plugin into test project
         shell: powershell
@@ -57,4 +66,70 @@ jobs:
       - name: Validate Fab package
         shell: powershell
         working-directory: RuntimeAssetImportPlugin
-        run: pwsh -NoProfile -File .\PackageForFab.ps1 -EngineVersion 5.4
+        run: |
+          $releaseOutput = Join-Path $env:RUNNER_TEMP 'RuntimeAssetImport-Fab-UE5.4'
+          $runnerTempRoot = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/')
+          $resolvedReleaseOutput = [System.IO.Path]::GetFullPath($releaseOutput).TrimEnd('\', '/')
+          if ($resolvedReleaseOutput.Equals($runnerTempRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+              -not $resolvedReleaseOutput.StartsWith($runnerTempRoot + [System.IO.Path]::DirectorySeparatorChar,
+                  [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to use release output outside RUNNER_TEMP: $resolvedReleaseOutput"
+          }
+          if ([System.IO.Directory]::Exists($resolvedReleaseOutput)) {
+            foreach ($file in [System.IO.Directory]::EnumerateFiles($resolvedReleaseOutput, '*',
+                    [System.IO.SearchOption]::AllDirectories)) {
+              [System.IO.File]::SetAttributes($file, [System.IO.FileAttributes]::Normal)
+            }
+            [System.IO.Directory]::Delete($resolvedReleaseOutput, $true)
+          }
+          [void][System.IO.Directory]::CreateDirectory($resolvedReleaseOutput)
+
+          pwsh -NoProfile -File .\PackageForFab.ps1 `
+            -EngineVersion 5.4 `
+            -ReleaseToolsRoot (Join-Path $env:GITHUB_WORKSPACE 'fab-plugin-release-tools') `
+            -OutputDirectory $resolvedReleaseOutput
+          if ($LASTEXITCODE -ne 0) {
+            throw "PackageForFab.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+          $zipFiles = @([System.IO.Directory]::GetFiles($resolvedReleaseOutput, '*.zip',
+                  [System.IO.SearchOption]::TopDirectoryOnly))
+          $checksumFiles = @([System.IO.Directory]::GetFiles($resolvedReleaseOutput, '*.zip.sha256',
+                  [System.IO.SearchOption]::TopDirectoryOnly))
+          $reportFiles = @([System.IO.Directory]::GetFiles($resolvedReleaseOutput, '*.zip.report.json',
+                  [System.IO.SearchOption]::TopDirectoryOnly))
+          $logFiles = @([System.IO.Directory]::GetFiles($resolvedReleaseOutput, '*.zip.log',
+                  [System.IO.SearchOption]::TopDirectoryOnly))
+          if ($zipFiles.Count -ne 1 -or $checksumFiles.Count -ne 1 -or
+              $reportFiles.Count -ne 1 -or $logFiles.Count -ne 1) {
+            throw 'Fab release output must contain exactly one ZIP and each of its three sidecars.'
+          }
+          $zipPath = $zipFiles[0]
+          $zipName = [System.IO.Path]::GetFileName($zipPath)
+          $pluginHead = (git -C (Join-Path $env:GITHUB_WORKSPACE 'RuntimeAssetImportPlugin') rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the CI plugin checkout HEAD.' }
+          $report = Get-Content -Raw -LiteralPath $reportFiles[0] | ConvertFrom-Json
+          if ($report.status -cne 'PASS' -or [string]$report.toolVersion -cne '0.3.1' -or
+              [string]$report.repositoryHead -cne $pluginHead -or
+              @($report.gates).Count -ne 12 -or
+              @($report.gates | Where-Object { $_.status -cne 'PASS' }).Count -ne 0) {
+            throw 'Fab release report failed the CI contract checks.'
+          }
+          $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumText = [System.IO.File]::ReadAllText($checksumFiles[0]).TrimEnd("`r", "`n")
+          $checksumMatch = [System.Text.RegularExpressions.Regex]::Match(
+            $checksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^\r\n]+)$')
+          if (-not $checksumMatch.Success -or $checksumMatch.Groups['Hash'].Value -cne $actualHash -or
+              $checksumMatch.Groups['Name'].Value -cne $zipName) {
+            throw 'Fab release checksum sidecar does not match the generated ZIP.'
+          }
+          if ([System.IO.Path]::GetFileName([string]$report.outputZip) -cne $zipName) {
+            throw 'Fab release report outputZip does not match the generated ZIP.'
+          }
+
+      - name: Upload Fab release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: RuntimeAssetImport-Fab-UE5.4
+          path: ${{ runner.temp }}/RuntimeAssetImport-Fab-UE5.4/*
+          if-no-files-found: error

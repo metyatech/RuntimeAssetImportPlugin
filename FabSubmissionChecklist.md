@@ -24,16 +24,20 @@
 - [x] Process-CWD-independent relative path resolution
 - [x] Auxiliary hard-link rejection
 - [x] Quaternion validity validation
+- [x] FabPluginRelease.json validated by fab-plugin-release-tools 0.3.1
+- [x] Repository-specific ZIP implementation replaced by pinned central release pipeline
+- [x] Deterministic ZIP, SHA-256, JSON report, and release log generated
+- [x] Direct ZIP inspection, safe extraction, and manifest comparison pass
 
 ## Unreal Engine Package Matrix
 
 - [x] UE 5.4 Automation Tests
-- [x] UE 5.4 `PackageForFab.ps1`
+- [x] UE 5.4 central Fab release pipeline, Automation Tests, and `BuildPlugin`
 - [x] UE 5.4 `BuildPlugin` Win64 Rocket build
-- [x] UE 5.5 Automation Tests, Fab package validation, and `BuildPlugin`
+- [x] UE 5.5 Automation Tests, central Fab package validation, and `BuildPlugin`
 - [ ] UE 5.6 Automation Tests, Fab package validation, and `BuildPlugin` — Stock UE 5.6.1 verification failed; no engine files were modified.
-- [x] UE 5.7 Automation Tests, Fab package validation, and `BuildPlugin`
-- [x] UE 5.8 Automation Tests, Fab package validation, and `BuildPlugin`
+- [x] UE 5.7 Automation Tests, central Fab package validation, and `BuildPlugin`
+- [x] UE 5.8 Automation Tests, central Fab package validation, and `BuildPlugin`
 
 ## Packaged Shipping Smoke
 

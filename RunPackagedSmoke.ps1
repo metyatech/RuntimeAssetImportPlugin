@@ -1,9 +1,17 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^5\.[0-9]+$')]
-    [string]$EngineVersion = '5.4',
+    [string]$EngineVersion = '5.8',
 
     [string]$WorkDirectory,
+
+    [string]$ReleaseToolsRoot,
+
+    [string]$EngineRoot,
+
+    [string]$SampleRoot,
+
+    [string]$PackageZipPath,
 
     [switch]$KeepWorkDirectory
 )
@@ -15,6 +23,8 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $CreatedDefaultWorkDirectory = [string]::IsNullOrWhiteSpace($WorkDirectory)
 $WorkRoot = $null
 $CompletedSuccessfully = $false
+$ExpectedSampleHead = 'b4c78058993e68a62fc9c16b673aec65ee668573'
+$ExpectedToolVersion = '0.3.1'
 
 function ConvertTo-NativeArgument
 {
@@ -230,6 +240,319 @@ function Copy-Directory
     }
 }
 
+function Test-IsSameOrDescendantPath
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$Candidate
+    )
+
+    $ResolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $ResolvedCandidate = [System.IO.Path]::GetFullPath($Candidate).TrimEnd('\', '/')
+    return $ResolvedCandidate.Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $ResolvedCandidate.StartsWith($ResolvedRoot + [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Invoke-GitValue
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$GitPath,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $Result = Invoke-NativeCommand -FilePath $GitPath -Arguments (@('-C', $RepositoryRoot) + $Arguments) `
+        -WorkingDirectory $RepositoryRoot
+    return $Result.StandardOutput.Trim()
+}
+
+function Assert-SampleRepository
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string]$GitPath
+    )
+
+    if (-not [System.IO.Directory]::Exists($RepositoryRoot))
+    {
+        throw "RuntimeAssetImportSample repository was not found: $RepositoryRoot"
+    }
+    $ResolvedRoot = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\', '/')
+    $GitRoot = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
+        -Arguments @('rev-parse', '--show-toplevel')
+    $NormalizedGitRoot = [System.IO.Path]::GetFullPath($GitRoot).TrimEnd('\', '/')
+    if (-not $NormalizedGitRoot.Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase))
+    {
+        throw "SampleRoot must be the exact Git repository root. Git reported '$GitRoot' for '$ResolvedRoot'."
+    }
+    $Status = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
+        -Arguments @('status', '--porcelain', '--untracked-files=all')
+    if (-not [string]::IsNullOrWhiteSpace($Status))
+    {
+        throw "RuntimeAssetImportSample source repository must be clean: $ResolvedRoot"
+    }
+    $Branch = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
+        -Arguments @('branch', '--show-current')
+    if ($Branch -cne 'main')
+    {
+        throw "RuntimeAssetImportSample source repository must be on branch main, found '$Branch'."
+    }
+    $Head = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
+        -Arguments @('rev-parse', 'HEAD')
+    if ($Head -cne $ExpectedSampleHead)
+    {
+        throw "RuntimeAssetImportSample HEAD mismatch. Expected $ExpectedSampleHead but found $Head."
+    }
+    $OriginMain = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $ResolvedRoot `
+        -Arguments @('rev-parse', 'origin/main')
+    if ($OriginMain -cne $ExpectedSampleHead)
+    {
+        throw "RuntimeAssetImportSample origin/main mismatch. Expected $ExpectedSampleHead but found $OriginMain."
+    }
+    return $ResolvedRoot
+}
+
+function Resolve-ReleaseArtifactSet
+{
+    param(
+        [string]$RequestedZipPath,
+        [Parameter(Mandatory = $true)][string]$OutputDirectory,
+        [Parameter(Mandatory = $true)][string]$RequestedEngineVersion
+    )
+
+    $ZipPath = $null
+    if (-not [string]::IsNullOrWhiteSpace($RequestedZipPath))
+    {
+        $ZipPath = [System.IO.Path]::GetFullPath($RequestedZipPath)
+        Assert-RequiredFile -Path $ZipPath
+    }
+    else
+    {
+        Assert-RequiredDirectory -Path $OutputDirectory
+        $ZipFiles = @([System.IO.Directory]::GetFiles($OutputDirectory, '*.zip',
+                [System.IO.SearchOption]::TopDirectoryOnly))
+        $ZipPattern = '^RuntimeAssetImport_.+_UE' + [regex]::Escape($RequestedEngineVersion) + '_Win64\.zip$'
+        $MatchingZipFiles = @($ZipFiles | Where-Object {
+                [System.Text.RegularExpressions.Regex]::IsMatch(
+                    [System.IO.Path]::GetFileName($_), $ZipPattern)
+            })
+        if ($ZipFiles.Count -ne 1 -or $MatchingZipFiles.Count -ne 1)
+        {
+            throw "Expected exactly one RuntimeAssetImport UE$RequestedEngineVersion ZIP in $OutputDirectory."
+        }
+        $ZipPath = [System.IO.Path]::GetFullPath($MatchingZipFiles[0])
+    }
+
+    if (([System.IO.FileInfo]::new($ZipPath)).Length -le 0)
+    {
+        throw "Release ZIP is empty: $ZipPath"
+    }
+    $ZipName = [System.IO.Path]::GetFileName($ZipPath)
+    $ZipPattern = '^RuntimeAssetImport_.+_UE' + [regex]::Escape($RequestedEngineVersion) + '_Win64\.zip$'
+    if (-not [System.Text.RegularExpressions.Regex]::IsMatch($ZipName, $ZipPattern))
+    {
+        throw "Release ZIP filename does not match the requested engine version: $ZipName"
+    }
+
+    $ChecksumPath = "$ZipPath.sha256"
+    $ReportPath = "$ZipPath.report.json"
+    $LogPath = "$ZipPath.log"
+    Assert-RequiredFile -Path $ChecksumPath
+    Assert-RequiredFile -Path $ReportPath
+    Assert-RequiredFile -Path $LogPath
+
+    $ChecksumText = [System.IO.File]::ReadAllText($ChecksumPath).TrimEnd("`r", "`n")
+    $ChecksumMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $ChecksumText, '^(?<Hash>[0-9a-f]{64})  (?<Name>[^\r\n]+)$')
+    if (-not $ChecksumMatch.Success -or $ChecksumMatch.Groups['Name'].Value -cne $ZipName)
+    {
+        throw "Checksum sidecar must contain '<lowercase SHA-256><two spaces><ZIP filename>': $ChecksumPath"
+    }
+    $ActualHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($ChecksumMatch.Groups['Hash'].Value -cne $ActualHash)
+    {
+        throw "Release ZIP checksum mismatch. Sidecar: $($ChecksumMatch.Groups['Hash'].Value); actual: $ActualHash"
+    }
+
+    $Report = Get-Content -Raw -LiteralPath $ReportPath | ConvertFrom-Json
+    if ($Report.status -cne 'PASS') { throw "Release report status is not PASS: $ReportPath" }
+    if ([string]$Report.toolVersion -cne $ExpectedToolVersion) {
+        throw "Release report toolVersion mismatch: $($Report.toolVersion)"
+    }
+    if ([string]$Report.pluginName -cne 'RuntimeAssetImport') {
+        throw "Release report pluginName mismatch: $($Report.pluginName)"
+    }
+    if ([string]$Report.engineVersion -cne $RequestedEngineVersion) {
+        throw "Release report engineVersion mismatch: $($Report.engineVersion)"
+    }
+    if ([string]$Report.repositoryHead -cne $ProductHead) {
+        throw "Release report repositoryHead mismatch. Expected $ProductHead but found $($Report.repositoryHead)."
+    }
+    if ([string]$Report.zipSha256 -cne $ActualHash) {
+        throw "Release report zipSha256 mismatch: $($Report.zipSha256)"
+    }
+    if ([System.IO.Path]::GetFileName([string]$Report.outputZip) -cne $ZipName) {
+        throw "Release report outputZip does not name the inspected ZIP: $($Report.outputZip)"
+    }
+    if ($Report.build.exitCode -ne 0) { throw 'Release report build.exitCode is not 0.' }
+    if ($Report.build.timedOut -ne $false) { throw 'Release report build.timedOut is not false.' }
+    $Gates = @($Report.gates)
+    if ($Gates.Count -ne 12) { throw "Release report gate count must be 12, found $($Gates.Count)." }
+    foreach ($Gate in $Gates) {
+        if ([string]$Gate.status -cne 'PASS') {
+            throw "Release report gate is not PASS: $($Gate.name)"
+        }
+    }
+    $LogText = [System.IO.File]::ReadAllText($LogPath)
+    if ($LogText.IndexOf('Release pipeline completed successfully.', [System.StringComparison]::Ordinal) -lt 0) {
+        throw "Release log does not contain the successful completion marker: $LogPath"
+    }
+    if ($LogText.IndexOf('GATE FAIL', [System.StringComparison]::Ordinal) -ge 0) {
+        throw "Release log contains GATE FAIL: $LogPath"
+    }
+
+    return [pscustomobject][ordered]@{
+        ZipPath      = $ZipPath
+        ZipName      = $ZipName
+        ChecksumPath = $ChecksumPath
+        ReportPath   = $ReportPath
+        LogPath      = $LogPath
+        Report       = $Report
+        Sha256       = $ActualHash
+    }
+}
+
+function Expand-ReleaseZipSafely
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$ZipPath,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot
+    )
+
+    if ([System.IO.Directory]::Exists($DestinationRoot))
+    {
+        throw "ZIP extraction destination already exists: $DestinationRoot"
+    }
+    [void][System.IO.Directory]::CreateDirectory($DestinationRoot)
+    $ResolvedRoot = [System.IO.Path]::GetFullPath($DestinationRoot).TrimEnd('\', '/')
+    $SeenEntries = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $PathTypes = [System.Collections.Generic.Dictionary[string, string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $TopLevels = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $Archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try
+    {
+        foreach ($Entry in $Archive.Entries)
+        {
+            $EntryName = $Entry.FullName
+            if ([string]::IsNullOrWhiteSpace($EntryName) -or $EntryName.Contains('\'))
+            {
+                throw "ZIP entry has an empty or backslash path: '$EntryName'"
+            }
+            $IsDirectory = $EntryName.EndsWith('/')
+            $NormalizedEntry = $EntryName.TrimEnd('/')
+            if ([string]::IsNullOrWhiteSpace($NormalizedEntry) -or
+                $NormalizedEntry.StartsWith('/') -or $NormalizedEntry.StartsWith('\') -or
+                $NormalizedEntry -match '^[A-Za-z]:' -or
+                [System.IO.Path]::IsPathFullyQualified($NormalizedEntry))
+            {
+                throw "ZIP entry has an absolute or drive-qualified path: $EntryName"
+            }
+            $Segments = $NormalizedEntry.Split([char]'/')
+            if (@($Segments | Where-Object { [string]::IsNullOrEmpty($_) -or $_ -eq '.' -or $_ -eq '..' }).Count -gt 0)
+            {
+                throw "ZIP entry has an unsafe path segment: $EntryName"
+            }
+            if ($Segments.Count -lt 2 -and -not $IsDirectory)
+            {
+                throw "ZIP file entry must be below the RuntimeAssetImport top-level directory: $EntryName"
+            }
+            [void]$TopLevels.Add($Segments[0])
+            if ($Segments[0] -cne 'RuntimeAssetImport')
+            {
+                throw "ZIP entry is outside the RuntimeAssetImport top-level directory: $EntryName"
+            }
+            if (-not $SeenEntries.Add($NormalizedEntry))
+            {
+                throw "Case-insensitive duplicate ZIP entry: $EntryName"
+            }
+
+            $EntryType = if ($IsDirectory) { 'directory' } else { 'file' }
+            if ($PathTypes.ContainsKey($NormalizedEntry))
+            {
+                if ($PathTypes[$NormalizedEntry] -ne $EntryType)
+                {
+                    throw "ZIP file/directory collision: $EntryName"
+                }
+                throw "Case-insensitive duplicate ZIP entry: $EntryName"
+            }
+            for ($Index = 1; $Index -lt $Segments.Count; $Index++)
+            {
+                $Parent = [string]::Join('/', $Segments[0..($Index - 1)])
+                if ($PathTypes.ContainsKey($Parent) -and $PathTypes[$Parent] -eq 'file')
+                {
+                    throw "ZIP file/directory collision: $EntryName"
+                }
+                if (-not $PathTypes.ContainsKey($Parent))
+                {
+                    $PathTypes[$Parent] = 'directory'
+                }
+            }
+            if ($EntryType -eq 'file')
+            {
+                foreach ($ExistingPath in @($PathTypes.Keys))
+                {
+                    if ($ExistingPath.StartsWith($NormalizedEntry + '/',
+                            [System.StringComparison]::OrdinalIgnoreCase))
+                    {
+                        throw "ZIP file/directory collision: $EntryName"
+                    }
+                }
+            }
+            $PathTypes[$NormalizedEntry] = $EntryType
+        }
+        if ($TopLevels.Count -ne 1 -or -not $TopLevels.Contains('RuntimeAssetImport'))
+        {
+            throw 'ZIP must contain exactly one top-level RuntimeAssetImport directory.'
+        }
+
+        foreach ($Entry in $Archive.Entries)
+        {
+            $EntryName = $Entry.FullName
+            $RelativeEntryPath = $EntryName.Replace('/', [System.IO.Path]::DirectorySeparatorChar).TrimEnd('\', '/')
+            $Destination = [System.IO.Path]::GetFullPath((Join-Path $ResolvedRoot $RelativeEntryPath))
+            if (-not (Test-IsSameOrDescendantPath -Root $ResolvedRoot -Candidate $Destination) -or
+                $Destination.Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase))
+            {
+                throw "ZIP entry escapes the extraction root: $EntryName"
+            }
+            if ($EntryName.EndsWith('/'))
+            {
+                [void][System.IO.Directory]::CreateDirectory($Destination)
+                continue
+            }
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Destination))
+            $InputStream = $Entry.Open()
+            $OutputStream = [System.IO.File]::Open($Destination, [System.IO.FileMode]::CreateNew)
+            try
+            {
+                $InputStream.CopyTo($OutputStream)
+            }
+            finally
+            {
+                $InputStream.Dispose()
+                $OutputStream.Dispose()
+            }
+        }
+    }
+    finally
+    {
+        $Archive.Dispose()
+    }
+}
+
 function Add-SampleModuleDependencies
 {
     param([Parameter(Mandatory = $true)][string]$BuildCsPath)
@@ -305,15 +628,27 @@ try
     $PwshPath = Get-RequiredCommandPath -Name 'pwsh.exe'
     $PowerShellPath = Get-RequiredCommandPath -Name 'powershell.exe'
 
-    $SourceSampleRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\RuntimeAssetImportSample'))
-    Assert-RequiredDirectory -Path $SourceSampleRoot
-    $SampleStatus = Invoke-NativeCommand -FilePath $GitPath -Arguments @('-C', $SourceSampleRoot, 'status', '--short')
-    if (-not [string]::IsNullOrWhiteSpace($SampleStatus.StandardOutput))
-    {
-        throw "RuntimeAssetImportSample source repository must be clean: $SourceSampleRoot"
+    $SourceSampleCandidate = if ($PSBoundParameters.ContainsKey('SampleRoot')) {
+        $SampleRoot
     }
-    $SampleHeadResult = Invoke-NativeCommand -FilePath $GitPath -Arguments @('-C', $SourceSampleRoot, 'rev-parse', 'HEAD')
-    $ExpectedSampleHead = $SampleHeadResult.StandardOutput.Trim()
+    else {
+        Join-Path $PSScriptRoot '..\RuntimeAssetImportSample'
+    }
+    $SourceSampleRoot = Assert-SampleRepository `
+        -RepositoryRoot ([System.IO.Path]::GetFullPath($SourceSampleCandidate)) -GitPath $GitPath
+    $SourceSampleConfigRoot = Join-Path $SourceSampleRoot 'Config'
+    Assert-RequiredDirectory -Path $SourceSampleConfigRoot
+    $SourceSampleConfigHashes = @(
+        foreach ($ConfigFile in @(Get-ChildItem -LiteralPath $SourceSampleConfigRoot -File -Recurse))
+        {
+            [pscustomobject][ordered]@{
+                RelativePath = $ConfigFile.FullName.Substring($SourceSampleConfigRoot.Length).TrimStart('\', '/')
+                Hash = (Get-FileHash -LiteralPath $ConfigFile.FullName -Algorithm SHA256).Hash
+            }
+        }
+    )
+    $ProductHead = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $PSScriptRoot `
+        -Arguments @('rev-parse', 'HEAD')
 
     if ($CreatedDefaultWorkDirectory)
     {
@@ -339,21 +674,50 @@ try
 
     $TempSampleRoot = Join-Path $WorkRoot 'S'
     [void](Invoke-NativeCommand -FilePath $GitPath `
-            -Arguments @('clone', '--recursive', '--no-local', $SourceSampleRoot, $TempSampleRoot) `
+            -Arguments @('clone', '--recursive', '--no-local', '--branch', 'main', '--single-branch',
+                $SourceSampleRoot, $TempSampleRoot) `
             -WorkingDirectory $WorkRoot)
-    $ClonedHeadResult = Invoke-NativeCommand -FilePath $GitPath -Arguments @('-C', $TempSampleRoot, 'rev-parse', 'HEAD')
-    $ClonedHead = $ClonedHeadResult.StandardOutput.Trim()
-    if ($ClonedHead -cne $ExpectedSampleHead)
+    $TempSampleBranch = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $TempSampleRoot `
+        -Arguments @('branch', '--show-current')
+    $TempSampleHead = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $TempSampleRoot `
+        -Arguments @('rev-parse', 'HEAD')
+    $TempSampleOriginMain = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $TempSampleRoot `
+        -Arguments @('rev-parse', 'origin/main')
+    $TempSampleStatus = Invoke-GitValue -GitPath $GitPath -RepositoryRoot $TempSampleRoot `
+        -Arguments @('status', '--porcelain', '--untracked-files=all')
+    if ($TempSampleBranch -cne 'main' -or $TempSampleHead -cne $ExpectedSampleHead -or
+        $TempSampleOriginMain -cne $ExpectedSampleHead -or
+        -not [string]::IsNullOrWhiteSpace($TempSampleStatus))
     {
-        throw "Cloned Sample HEAD mismatch. Expected $ExpectedSampleHead but found $ClonedHead."
+        throw "Temp Sample clone must be main at $ExpectedSampleHead with origin/main at the same SHA and clean status."
     }
 
     $PackageOutput = Join-Path $WorkRoot 'P'
-    [void](Invoke-NativeCommand -FilePath $PwshPath -Arguments @(
+    if ([string]::IsNullOrWhiteSpace($PackageZipPath))
+    {
+        $PackageArguments = @(
             '-NoProfile', '-File', (Join-Path $PSScriptRoot 'PackageForFab.ps1'),
-            '-EngineVersion', $EngineVersion, '-OutputDirectory', $PackageOutput))
-    $StagedPluginRoot = Join-Path $PackageOutput "PackedForFab\UE$EngineVersion\RuntimeAssetImport"
+            '-EngineVersion', $EngineVersion, '-OutputDirectory', $PackageOutput)
+        if ($PSBoundParameters.ContainsKey('ReleaseToolsRoot'))
+        {
+            $PackageArguments += @('-ReleaseToolsRoot', $ReleaseToolsRoot)
+        }
+        if ($PSBoundParameters.ContainsKey('EngineRoot'))
+        {
+            $PackageArguments += @('-EngineRoot', $EngineRoot)
+        }
+        [void](Invoke-NativeCommand -FilePath $PwshPath -Arguments $PackageArguments)
+    }
+    $ArtifactSet = Resolve-ReleaseArtifactSet -RequestedZipPath $PackageZipPath `
+        -OutputDirectory $PackageOutput -RequestedEngineVersion $EngineVersion
+    Write-Host "Release ZIP validated: $($ArtifactSet.ZipPath)" -ForegroundColor Green
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $ExtractionRoot = Join-Path $WorkRoot 'E'
+    Expand-ReleaseZipSafely -ZipPath $ArtifactSet.ZipPath -DestinationRoot $ExtractionRoot
+    $StagedPluginRoot = Join-Path $ExtractionRoot 'RuntimeAssetImport'
     Assert-RequiredDirectory -Path $StagedPluginRoot
+    Assert-RequiredFile -Path (Join-Path $StagedPluginRoot 'RuntimeAssetImport.uplugin')
 
     $TempPluginRoot = Join-Path $TempSampleRoot 'Plugins\RuntimeAssetImport'
     Remove-DirectorySafely -Path $TempPluginRoot -AllowedRoot $TempSampleRoot
@@ -420,6 +784,7 @@ try
 
 [/Script/UnrealEd.ProjectPackagingSettings]
 +DirectoriesToAlwaysStageAsNonUFS=(Path="SmokeAssets")
++DirectoriesToAlwaysCook=(Path="/RuntimeAssetImport")
 '@ + "`n"
     [System.IO.File]::WriteAllText($DefaultGamePath, $DefaultGameText, $Utf8NoBom)
 
@@ -431,12 +796,51 @@ try
 [/Script/EngineSettings.GameMapsSettings]
 GameDefaultMap=/Game/Smoke/SmokeMap
 GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameInstance
-
-[/Script/UnrealEd.ProjectPackagingSettings]
-+DirectoriesToAlwaysStageAsNonUFS=(Path="SmokeAssets")
-+DirectoriesToAlwaysCook=(Path="/RuntimeAssetImport")
 '@
     [System.IO.File]::WriteAllText($DefaultEnginePath, $DefaultEngineText + $SmokeConfiguration + "`n", $Utf8NoBom)
+
+    $DefaultGameText = [System.IO.File]::ReadAllText($DefaultGamePath)
+    $DefaultEngineText = [System.IO.File]::ReadAllText($DefaultEnginePath)
+    $ProjectPackagingSectionPattern = '(?m)^\[/Script/UnrealEd\.ProjectPackagingSettings\]\r?$'
+    $DirectoriesToAlwaysCookPattern = '(?m)^\+DirectoriesToAlwaysCook=\(Path="/RuntimeAssetImport"\)\r?$'
+    $SmokeAssetsStagePattern = '(?m)^\+DirectoriesToAlwaysStageAsNonUFS=\(Path="SmokeAssets"\)\r?$'
+    $GameMapsSectionPattern = '(?m)^\[/Script/EngineSettings\.GameMapsSettings\]\r?$'
+    $DefaultGameProjectPackagingCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $ProjectPackagingSectionPattern).Count
+    $DefaultGameCookCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $DirectoriesToAlwaysCookPattern).Count
+    $DefaultGameSmokeAssetsCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultGameText, $SmokeAssetsStagePattern).Count
+    $DefaultEngineProjectPackagingCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultEngineText, $ProjectPackagingSectionPattern).Count
+    $DefaultEngineGameMapsCount = [System.Text.RegularExpressions.Regex]::Matches(
+        $DefaultEngineText, $GameMapsSectionPattern).Count
+    if ($DefaultGameProjectPackagingCount -ne 1 -or $DefaultGameCookCount -ne 1 -or
+        $DefaultGameSmokeAssetsCount -ne 1 -or $DefaultEngineProjectPackagingCount -ne 0 -or
+        $DefaultEngineGameMapsCount -ne 1)
+    {
+        throw ("Temp Sample packaging configuration is invalid: DefaultGame ProjectPackagingSettings={0}, " +
+            "Cook={1}, SmokeAssets={2}; DefaultEngine ProjectPackagingSettings={3}, GameMapsSettings={4}.") -f
+            $DefaultGameProjectPackagingCount, $DefaultGameCookCount, $DefaultGameSmokeAssetsCount,
+            $DefaultEngineProjectPackagingCount, $DefaultEngineGameMapsCount
+    }
+
+    $CurrentSourceSampleConfigFiles = @(Get-ChildItem -LiteralPath $SourceSampleConfigRoot -File -Recurse)
+    if ($CurrentSourceSampleConfigFiles.Count -ne $SourceSampleConfigHashes.Count)
+    {
+        throw 'Source Sample Config file count changed during packaged smoke preparation.'
+    }
+    foreach ($ExpectedConfig in $SourceSampleConfigHashes)
+    {
+        $CurrentConfigPath = Join-Path $SourceSampleConfigRoot $ExpectedConfig.RelativePath
+        Assert-RequiredFile -Path $CurrentConfigPath
+        $CurrentConfigHash = (Get-FileHash -LiteralPath $CurrentConfigPath -Algorithm SHA256).Hash
+        if ($CurrentConfigHash -cne $ExpectedConfig.Hash)
+        {
+            throw "Source Sample Config hash changed: $($ExpectedConfig.RelativePath)"
+        }
+    }
+    Write-Host 'Temp Sample packaging configuration and source Config hashes validated.' -ForegroundColor Green
 
     $SmokeAssetDestination = Join-Path $TempSampleRoot 'Content\SmokeAssets'
     [void][System.IO.Directory]::CreateDirectory($SmokeAssetDestination)
@@ -468,10 +872,17 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         throw "Staged red PNG SHA-256 mismatch: $ActualRedPngHash"
     }
 
-    $EngineResolverPath = Join-Path $TempSampleRoot 'UnrealBuildRunTestScript\Get-UEInstallPath.ps1'
-    $EngineResult = Invoke-NativeCommand -FilePath $PowerShellPath -Arguments @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $EngineResolverPath, '-Version', $EngineVersion)
-    $EngineRoot = $EngineResult.StandardOutput.Trim()
+    if ($PSBoundParameters.ContainsKey('EngineRoot'))
+    {
+        $EngineRoot = [System.IO.Path]::GetFullPath($EngineRoot)
+    }
+    else
+    {
+        $EngineResolverPath = Join-Path $TempSampleRoot 'UnrealBuildRunTestScript\Get-UEInstallPath.ps1'
+        $EngineResult = Invoke-NativeCommand -FilePath $PowerShellPath -Arguments @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $EngineResolverPath, '-Version', $EngineVersion)
+        $EngineRoot = $EngineResult.StandardOutput.Trim()
+    }
     Assert-RequiredDirectory -Path $EngineRoot
 
     $BuildBatch = Join-Path $EngineRoot 'Engine\Build\BatchFiles\Build.bat'

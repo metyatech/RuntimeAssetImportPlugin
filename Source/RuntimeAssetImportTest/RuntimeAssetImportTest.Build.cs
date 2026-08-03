@@ -1,3 +1,5 @@
+// Copyright (c) 2026 metyatech. All rights reserved.
+
 using System.IO;
 using UnrealBuildTool;
 
