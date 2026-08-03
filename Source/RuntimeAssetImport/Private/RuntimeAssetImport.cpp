@@ -14,8 +14,7 @@ void FRuntimeAssetImportModule::StartupModule()
 {
     static const TCHAR *AssimpDllName = TEXT("assimp-vc143-mt.dll");
     const FString BaseDirCandidate = FPaths::Combine(FPlatformProcess::BaseDir(), AssimpDllName);
-    const TArray<FString> CandidatePaths = {BaseDirCandidate,
-                                            FString(AssimpDllName),
+    const TArray<FString> CandidatePaths = {BaseDirCandidate, FString(AssimpDllName),
                                             FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
                                                             TEXT("Source/ThirdParty/assimp/Bin/Win64"), AssimpDllName),
                                             FPaths::Combine(FPaths::EnginePluginsDir(),
@@ -32,8 +31,8 @@ void FRuntimeAssetImportModule::StartupModule()
 
     if (AssimpDllHandle == nullptr)
     {
-        UE_LOG(LogRuntimeAssetImport, Error,
-               TEXT("Failed to load '%s'. BaseDir candidate: '%s'."), AssimpDllName, *BaseDirCandidate);
+        UE_LOG(LogRuntimeAssetImport, Error, TEXT("Failed to load '%s'. BaseDir candidate: '%s'."), AssimpDllName,
+               *BaseDirCandidate);
     }
 }
 
