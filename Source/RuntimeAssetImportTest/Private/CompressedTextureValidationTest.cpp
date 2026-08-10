@@ -125,7 +125,8 @@ namespace
     UMaterialInterface *LoadTextureTestParentMaterial()
     {
         return LoadObject<UMaterialInterface>(
-            nullptr, TEXT("/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
+            nullptr,
+            TEXT("/RuntimeAssetImport/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
     }
 
     bool TestBothTextureConstructorsReject(FAutomationTestBase &Test, const FString &Label,

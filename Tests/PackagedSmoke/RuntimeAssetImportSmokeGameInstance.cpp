@@ -277,7 +277,7 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
         LoadSmokeAssetBytes(FPaths::Combine(SmokeAssetDirectory, TEXT("textures/test_red.png")), ExpectedRedPngBytes);
 
     UMaterialInterface *ParentMaterial = LoadObject<UMaterialInterface>(
-        nullptr, TEXT("/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
+        nullptr, TEXT("/RuntimeAssetImport/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
     if (ParentMaterial == nullptr)
     {
         UE_LOG(LogRuntimeAssetImportSmoke, Error, TEXT("Could not load the Runtime Asset Import Parent Material."));

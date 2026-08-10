@@ -23,7 +23,8 @@ namespace
     UMaterialInterface *LoadPluginParentMaterial()
     {
         return LoadObject<UMaterialInterface>(
-            nullptr, TEXT("/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
+            nullptr,
+            TEXT("/RuntimeAssetImport/RuntimeAssetImport/AssetImporterMeshMaterial.AssetImporterMeshMaterial"));
     }
 
     FLoadedMeshData MakeValidTriangleMeshData()
