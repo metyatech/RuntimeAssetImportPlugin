@@ -58,11 +58,14 @@
 
 ## Media
 
-- [ ] Human visual confirmation of imported geometry/material
-- [ ] Runtime screenshot
-- [ ] Thumbnail
-- [ ] Blueprint node screenshot
-- [ ] Formats and limitations graphic
+- [x] Human visual confirmation of imported geometry/material
+- [x] Runtime before/after screenshot
+- [x] Thumbnail
+- [x] Blueprint workflow screenshot
+- [x] Formats graphic
+- [x] External and embedded texture graphic
+
+Product limitations are documented in [MarketplaceListing.md](MarketplaceListing.md); no dedicated limitations image is used.
 
 ## Fab Portal
 

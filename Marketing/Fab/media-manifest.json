@@ -1,0 +1,56 @@
+{
+  "product": "Runtime Asset Import",
+  "variant": "HQModels-V2",
+  "canvas": "1920x1080",
+  "format": "JPEG",
+  "plugin_head": "7d142cfdbcc800c5cb919ec6a0a1f6a9312587d7",
+  "sample_head": "b4c78058993e68a62fc9c16b673aec65ee668573",
+  "source_raw_zip": "RuntimeAssetImport-Fab-RawMedia-HQModels-V2-20260727-213105.zip",
+  "blueprint_image_reused_unchanged": true,
+  "files": [
+    {
+      "file": "01-thumbnail.jpg",
+      "bytes": 162987,
+      "sha256": "931fdcf2f9f939403ed8303078d6768374aea577c5f889c290ddecb8698b229e",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    },
+    {
+      "file": "02-tested-formats.jpg",
+      "bytes": 179671,
+      "sha256": "01b89fa5b928d9d0284b415b6d1fb5e234bad168b113fe7a884f5a7bd2116297",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    },
+    {
+      "file": "03-external-embedded-textures.jpg",
+      "bytes": 159671,
+      "sha256": "9d406af341d113fb0fe41cb10cb644802810cec41e29c70053e15ba87ae43165",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    },
+    {
+      "file": "04-blueprint-workflow.jpg",
+      "bytes": 192113,
+      "sha256": "03b5048e7a3be1f4dbea0c3eef1fa29af54475cff59b4ffd30a591c658627392",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    },
+    {
+      "file": "05-runtime-before-after.jpg",
+      "bytes": 127839,
+      "sha256": "f0d05cbe92d47747260b9764cc92f7ed77db95abf28976fc6ba564b2ef83d3a1",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    },
+    {
+      "file": "contact-sheet.jpg",
+      "bytes": 189045,
+      "sha256": "71848350e8a75f9690394561c6d529ba7742e7b3e08c972991b54012d353f1cf",
+      "dimensions": "1920x1080",
+      "under_3mb": true
+    }
+  ],
+  "texture_external_source": "45-isolated-crate-v2.png",
+  "texture_external_note": "Wooden Crate OBJ + MTL + external PNG; wood base-color visibly preserved."
+}

@@ -53,6 +53,8 @@ The bundled Assimp build includes the FBX, OBJ, glTF/GLB, and Collada importers 
 
 Automated tests cover both file and in-memory import for FBX, OBJ, glTF, GLB, and DAE.
 
+Demo assets shown in screenshots are Poly Haven CC0 assets and are not included with the plugin.
+
 Important limitations:
 
 - Win64 only
@@ -79,7 +81,7 @@ Target Platform: Windows Win64
 Third Party: Assimp 6.0.5, BSD-3-Clause
 Documentation: https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/
 Support: https://github.com/metyatech/RuntimeAssetImportPlugin/issues
-Example Project: None for the initial release
+Example Project: https://github.com/metyatech/RuntimeAssetImportSample
 Test Host: https://github.com/metyatech/RuntimeAssetImportSample
 ```
 
