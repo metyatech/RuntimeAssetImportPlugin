@@ -15,6 +15,8 @@ Supported Target Platform: Win64
 Mature Content: No
 Generated with AI: Yes
 Allows usage with AI: Yes
+Open Source: No
+Third-Party Software: Yes
 EDC forum post: No
 Publication after approval: Manual activation
 ```
