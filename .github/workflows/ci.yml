@@ -22,6 +22,25 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Remove stale sample plugin junction
+        shell: powershell
+        run: |
+          $linkPath = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportSample\Plugins\RuntimeAssetImport"
+          $linkItem = Get-Item -LiteralPath $linkPath -Force -ErrorAction SilentlyContinue
+          if ($null -eq $linkItem) {
+            Write-Host "No stale sample plugin path found: $linkPath"
+          } elseif (-not $linkItem.PSIsContainer) {
+            throw "Refusing to replace non-directory sample plugin path: $linkPath"
+          } elseif (($linkItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Write-Host "Removing stale sample plugin junction: $linkPath"
+            [System.IO.Directory]::Delete($linkPath, $false)
+            if ($null -ne (Get-Item -LiteralPath $linkPath -Force -ErrorAction SilentlyContinue)) {
+              throw "Stale sample plugin junction remained after deletion: $linkPath"
+            }
+          } else {
+            Write-Host "Preserving regular sample plugin directory for actions/checkout: $linkPath"
+          }
+
       - name: Checkout test host project
         uses: actions/checkout@v6
         with:
@@ -49,7 +68,17 @@ jobs:
           if (-not $resolvedLinkPath.StartsWith($resolvedWorkspace + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "Refusing to replace path outside GITHUB_WORKSPACE: $resolvedLinkPath"
           }
-          if ([System.IO.Directory]::Exists($resolvedLinkPath)) {
+          $linkItem = Get-Item -LiteralPath $resolvedLinkPath -Force -ErrorAction SilentlyContinue
+          if ($null -ne $linkItem -and -not $linkItem.PSIsContainer) {
+            throw "Refusing to replace non-directory plugin link path: $resolvedLinkPath"
+          }
+          if ($null -ne $linkItem -and
+              (($linkItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            [System.IO.Directory]::Delete($resolvedLinkPath, $false)
+            if ($null -ne (Get-Item -LiteralPath $resolvedLinkPath -Force -ErrorAction SilentlyContinue)) {
+              throw "Plugin junction remained after deletion: $resolvedLinkPath"
+            }
+          } elseif ($null -ne $linkItem) {
             [System.IO.Directory]::EnumerateFiles($resolvedLinkPath, '*', [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
               [System.IO.File]::SetAttributes($_, [System.IO.FileAttributes]::Normal)
             }
@@ -57,6 +86,30 @@ jobs:
           }
           New-Item -ItemType Junction -Path $linkPath -Target $pluginPath
           Write-Host "Linked: $linkPath -> $pluginPath"
+
+      - name: Verify plugin checkout integrity before build
+        shell: powershell
+        run: |
+          $pluginPath = Join-Path $env:GITHUB_WORKSPACE "RuntimeAssetImportPlugin"
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_SHA)) {
+            throw 'GITHUB_SHA is empty; cannot verify the plugin checkout commit.'
+          }
+          $pluginHead = (git -C $pluginPath rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not read the plugin checkout HEAD.'
+          }
+          if ($pluginHead -cne $env:GITHUB_SHA) {
+            throw "Plugin checkout was modified by another checkout: expected $env:GITHUB_SHA but found $pluginHead."
+          }
+          $trackedChanges = git -C $pluginPath status --porcelain=v1 --untracked-files=no
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not inspect tracked changes in the plugin checkout.'
+          }
+          $trackedChangesText = ($trackedChanges -join "`n").Trim()
+          if (-not [string]::IsNullOrWhiteSpace($trackedChangesText)) {
+            throw "Plugin checkout has tracked changes before Verify:`n$trackedChangesText"
+          }
+          Write-Host "Plugin checkout integrity verified at $pluginHead with no tracked changes."
 
       - name: Verify (build + test)
         shell: powershell
