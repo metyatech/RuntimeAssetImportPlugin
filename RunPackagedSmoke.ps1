@@ -22,6 +22,9 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $CreatedDefaultWorkDirectory = [string]::IsNullOrWhiteSpace($WorkDirectory)
 $WorkRoot = $null
+$RenamedFolderDllBackupPaths = $null
+$RenamedFolderDllBackupRoot = $null
+$MissingDllBackupItems = $null
 $CompletedSuccessfully = $false
 $ExpectedSampleHead = 'b4c78058993e68a62fc9c16b673aec65ee668573'
 $ExpectedToolVersion = '0.4.0'
@@ -996,6 +999,82 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         throw "Expected exactly one packaged RuntimeAssetImportSample.exe, found $($PackagedExecutables.Length)."
     }
     $PackagedExecutable = $PackagedExecutables[0]
+    $SampleAssimpDllPaths = @([System.IO.Directory]::GetFiles(
+            $TempSampleRoot, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories))
+    if ($SampleAssimpDllPaths.Length -lt 1)
+    {
+        throw 'The editor smoke host does not contain assimp-vc143-mt.dll for the renamed-folder smoke.'
+    }
+    $RenamedFolderAssimpDllPaths = @($SampleAssimpDllPaths | Where-Object {
+        $relative = Get-RelativePath -BasePath $TempSampleRoot -Path $_
+        $relative -match '(?i)(?:^|[\\/])FabReviewRenamedFolder[\\/]Source[\\/]ThirdParty[\\/]assimp[\\/]Bin[\\/]Win64[\\/]assimp-vc143-mt\.dll$'
+    })
+    if ($RenamedFolderAssimpDllPaths.Length -ne 1)
+    {
+        throw "Expected exactly one Assimp DLL under the renamed plugin's Source/ThirdParty path, found $($RenamedFolderAssimpDllPaths.Length)."
+    }
+    $RenamedFolderAssimpDllPath = $RenamedFolderAssimpDllPaths[0]
+    $RenamedFolderDllBackupRoot = Join-Path $WorkRoot 'RenamedFolderDllBackup'
+    [void][System.IO.Directory]::CreateDirectory($RenamedFolderDllBackupRoot)
+    $RenamedFolderDllBackupPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($SampleAssimpDllPath in $SampleAssimpDllPaths)
+    {
+        if ($SampleAssimpDllPath -eq $RenamedFolderAssimpDllPath) { continue }
+        $relative = Get-RelativePath -BasePath $TempSampleRoot -Path $SampleAssimpDllPath
+        $backupPath = Join-Path $RenamedFolderDllBackupRoot $relative
+        [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($backupPath))
+        Move-Item -LiteralPath $SampleAssimpDllPath -Destination $backupPath
+        $RenamedFolderDllBackupPaths.Add($backupPath)
+    }
+    $remainingSampleAssimpDllPaths = @([System.IO.Directory]::GetFiles(
+            $TempSampleRoot, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories))
+    if ($remainingSampleAssimpDllPaths.Length -ne 1 -or
+        $remainingSampleAssimpDllPaths[0] -cne $RenamedFolderAssimpDllPath)
+    {
+        throw 'Renamed-folder editor smoke was not isolated to the plugin-relative Assimp DLL.'
+    }
+    Write-Host "Renamed-folder smoke Assimp DLL: $RenamedFolderAssimpDllPath" -ForegroundColor Green
+    try
+    {
+        $RenamedSmokeUserDirectory = Join-Path $WorkRoot 'RenamedFolderEditorUser'
+        [void][System.IO.Directory]::CreateDirectory($RenamedSmokeUserDirectory)
+        $RenamedSmokeLogPath = Join-Path $WorkRoot 'renamed-folder-editor-smoke.log'
+        $RenamedSmokeArguments = @(
+            $ProjectPath, '-game', '-unattended', '-nosplash', '-nosound', '-RenderOffscreen', '-log', '-stdout',
+            '-forcelogflush', ("-abslog=$RenamedSmokeLogPath"), ("-UserDir=$RenamedSmokeUserDirectory"))
+        [void](Invoke-PackagedExecutable -ExecutablePath $UnrealEditorCmd `
+            -WorkingDirectory $TempSampleRoot -Arguments $RenamedSmokeArguments -LogPath $RenamedSmokeLogPath)
+        $RenamedSmokeResultFiles = [System.IO.Directory]::GetFiles(
+            $WorkRoot, 'RuntimeAssetImportSmoke.json', [System.IO.SearchOption]::AllDirectories)
+        if ($RenamedSmokeResultFiles.Length -ne 1)
+        {
+            throw "Expected exactly one renamed-folder RuntimeAssetImportSmoke.json, found $($RenamedSmokeResultFiles.Length)."
+        }
+        $RenamedSmokeResult = Get-Content -Raw -LiteralPath $RenamedSmokeResultFiles[0] | ConvertFrom-Json
+        if ($RenamedSmokeResult.OverallSuccess -ne $true)
+        {
+            throw 'Renamed-folder editor smoke reported OverallSuccess=false.'
+        }
+        $RenamedObjResult = @($RenamedSmokeResult.Formats | Where-Object { $_.Format -eq 'OBJ' })
+        if ($RenamedObjResult.Count -ne 1 -or $RenamedObjResult[0].ImportSuccess -ne $true)
+        {
+            throw 'Renamed-folder editor smoke did not complete a successful OBJ import.'
+        }
+        Write-Host 'Renamed-folder editor smoke completed a successful OBJ import.' -ForegroundColor Green
+        Move-Item -LiteralPath $RenamedSmokeResultFiles[0] `
+            -Destination (Join-Path $WorkRoot 'RenamedFolderEditorSmoke.json')
+    }
+    finally
+    {
+        foreach ($RenamedFolderDllBackupPath in $RenamedFolderDllBackupPaths)
+        {
+            $RelativeDllPath = Get-RelativePath -BasePath $RenamedFolderDllBackupRoot -Path $RenamedFolderDllBackupPath
+            $RestorePath = Join-Path $TempSampleRoot $RelativeDllPath
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($RestorePath))
+            Move-Item -LiteralPath $RenamedFolderDllBackupPath -Destination $RestorePath
+        }
+        $RenamedFolderDllBackupPaths.Clear()
+    }
     $RuntimeUserDirectory = Join-Path $WorkRoot 'U'
     [void][System.IO.Directory]::CreateDirectory($RuntimeUserDirectory)
     $RuntimeLogPath = Join-Path $WorkRoot 'smoke.log'
@@ -1075,24 +1154,38 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         }
     }
 
-    $MissingDllPaths = @([System.IO.Directory]::GetFiles(
-            $ArchiveDirectory, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories))
-    if ($MissingDllPaths.Length -lt 1)
+    $MissingDllPaths = [System.Collections.Generic.List[string]]::new()
+    foreach ($DllSearchRoot in @($ArchiveDirectory, $TempSampleRoot))
     {
-        throw 'The packaged output does not contain assimp-vc143-mt.dll for the missing DLL smoke.'
+        foreach ($DllPath in [System.IO.Directory]::GetFiles(
+                $DllSearchRoot, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories))
+        {
+            if (-not $MissingDllPaths.Contains($DllPath))
+            {
+                [void]$MissingDllPaths.Add($DllPath)
+            }
+        }
     }
+    if ($MissingDllPaths.Count -lt 1) { throw 'The temp smoke hosts contain no Assimp DLL for the missing DLL smoke.' }
     $MissingDllBackupRoot = Join-Path $WorkRoot 'MissingDllBackup'
     [void][System.IO.Directory]::CreateDirectory($MissingDllBackupRoot)
-    $MissingDllBackupPaths = New-Object System.Collections.Generic.List[string]
+    $MissingDllBackupItems = [System.Collections.Generic.List[object]]::new()
     try
     {
         foreach ($MissingDllPath in $MissingDllPaths)
         {
-            $RelativeDllPath = Get-RelativePath -BasePath $ArchiveDirectory -Path $MissingDllPath
-            $BackupPath = Join-Path $MissingDllBackupRoot $RelativeDllPath
+            $BackupSourceRoot = if ($MissingDllPath.StartsWith($ArchiveDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $ArchiveDirectory
+            } else { $TempSampleRoot }
+            $BackupRootName = if ($BackupSourceRoot -eq $ArchiveDirectory) { 'Archive' } else { 'Sample' }
+            $RelativeDllPath = Get-RelativePath -BasePath $BackupSourceRoot -Path $MissingDllPath
+            $BackupPath = Join-Path (Join-Path $MissingDllBackupRoot $BackupRootName) $RelativeDllPath
             [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($BackupPath))
             Move-Item -LiteralPath $MissingDllPath -Destination $BackupPath
-            $MissingDllBackupPaths.Add($BackupPath)
+            $MissingDllBackupItems.Add([pscustomobject]@{
+                BackupPath = $BackupPath
+                RestorePath = $MissingDllPath
+            })
         }
 
         $MissingDllUserDirectory = Join-Path $WorkRoot 'MissingDllUser'
@@ -1102,9 +1195,11 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
             '-unattended', '-nosplash', '-nosound', '-RenderOffscreen', '-log', '-stdout',
             '-RuntimeAssetImportMissingDllSmoke', ("-abslog=$MissingDllLogPath"),
             ("-UserDir=$MissingDllUserDirectory"))
-        $MissingDllTranscript = [string](Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
-            -WorkingDirectory ([System.IO.Path]::GetDirectoryName($PackagedExecutable)) `
-            -Arguments $MissingDllArguments -LogPath $MissingDllLogPath)
+        $MissingDllArguments += '-forcelogflush'
+        $EditorMissingDllArguments = @($ProjectPath, '-game') + $MissingDllArguments
+        $MissingDllTranscript = [string](Invoke-PackagedExecutable -ExecutablePath $UnrealEditorCmd `
+            -WorkingDirectory $TempSampleRoot `
+            -Arguments $EditorMissingDllArguments -LogPath $MissingDllLogPath)
         $MissingDllResultFiles = [System.IO.Directory]::GetFiles(
             $WorkRoot, 'RuntimeAssetImportMissingDllSmoke.json', [System.IO.SearchOption]::AllDirectories)
         if ($MissingDllResultFiles.Length -ne 1)
@@ -1126,6 +1221,10 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
             throw 'Missing DLL smoke did not observe an unavailable Assimp module.'
         }
         $MissingDllLogText = [System.IO.File]::ReadAllText($MissingDllLogPath) + "`n" + $MissingDllTranscript
+        if ($MissingDllLogText.IndexOf('Assimp is unavailable', [System.StringComparison]::OrdinalIgnoreCase) -lt 0)
+        {
+            throw 'Missing DLL smoke log does not contain the expected unavailable-Assimp error.'
+        }
         foreach ($ForbiddenMissingDllPattern in @('fatal error', 'unhandled exception'))
         {
             if ($MissingDllLogText.IndexOf($ForbiddenMissingDllPattern, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
@@ -1136,14 +1235,22 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
     }
     finally
     {
-        foreach ($MissingDllBackupPath in $MissingDllBackupPaths)
+        foreach ($MissingDllBackupItem in $MissingDllBackupItems)
         {
-            $RelativeDllPath = Get-RelativePath -BasePath $MissingDllBackupRoot -Path $MissingDllBackupPath
-            $RestorePath = Join-Path $ArchiveDirectory $RelativeDllPath
-            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($RestorePath))
-            Move-Item -LiteralPath $MissingDllBackupPath -Destination $RestorePath
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($MissingDllBackupItem.RestorePath))
+            Move-Item -LiteralPath $MissingDllBackupItem.BackupPath -Destination $MissingDllBackupItem.RestorePath
         }
+        $MissingDllBackupItems.Clear()
     }
+
+    foreach ($RenamedFolderDllBackupPath in $RenamedFolderDllBackupPaths)
+    {
+        $RelativeDllPath = Get-RelativePath -BasePath $RenamedFolderDllBackupRoot -Path $RenamedFolderDllBackupPath
+        $RestorePath = Join-Path $ArchiveDirectory $RelativeDllPath
+        [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($RestorePath))
+        Move-Item -LiteralPath $RenamedFolderDllBackupPath -Destination $RestorePath
+    }
+    $RenamedFolderDllBackupPaths.Clear()
 
     $PackagedDlls = [System.IO.Directory]::GetFiles(
         $ArchiveDirectory, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories)
@@ -1172,6 +1279,30 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
 }
 finally
 {
+    if ($null -ne $MissingDllBackupItems)
+    {
+        foreach ($MissingDllBackupItem in @($MissingDllBackupItems))
+        {
+            if ([System.IO.File]::Exists($MissingDllBackupItem.BackupPath))
+            {
+                [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($MissingDllBackupItem.RestorePath))
+                Move-Item -LiteralPath $MissingDllBackupItem.BackupPath -Destination $MissingDllBackupItem.RestorePath
+            }
+        }
+    }
+    if ($null -ne $RenamedFolderDllBackupPaths -and $null -ne $RenamedFolderDllBackupRoot)
+    {
+        foreach ($RenamedFolderDllBackupPath in @($RenamedFolderDllBackupPaths))
+        {
+            if ([System.IO.File]::Exists($RenamedFolderDllBackupPath))
+            {
+                $RelativeDllPath = Get-RelativePath -BasePath $RenamedFolderDllBackupRoot -Path $RenamedFolderDllBackupPath
+                $RestorePath = Join-Path $ArchiveDirectory $RelativeDllPath
+                [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($RestorePath))
+                Move-Item -LiteralPath $RenamedFolderDllBackupPath -Destination $RestorePath
+            }
+        }
+    }
     if ($CompletedSuccessfully -and -not $KeepWorkDirectory -and $null -ne $WorkRoot -and
         [System.IO.Directory]::Exists($WorkRoot))
     {
