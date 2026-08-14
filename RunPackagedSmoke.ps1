@@ -794,6 +794,8 @@ try
     Assert-RequiredFile -Path (Join-Path $StagedPluginRoot 'RuntimeAssetImport.uplugin')
 
     $TempPluginRoot = Join-Path $TempSampleRoot 'Plugins\FabReviewRenamedFolder'
+    $OriginalSamplePluginRoot = Join-Path $TempSampleRoot 'Plugins\RuntimeAssetImport'
+    Remove-DirectorySafely -Path $OriginalSamplePluginRoot -AllowedRoot $TempSampleRoot
     Remove-DirectorySafely -Path $TempPluginRoot -AllowedRoot $TempSampleRoot
     Copy-Directory -Source $StagedPluginRoot -Destination $TempPluginRoot
     if ([System.IO.Directory]::Exists((Join-Path $TempPluginRoot 'Source\RuntimeAssetImportTest')))
