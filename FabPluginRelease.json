@@ -75,6 +75,7 @@
     "README.md"
   ],
   "customDistributionPaths": [
+    "README.md"
   ],
   "thirdPartyLicenseSets": [],
   "forbiddenPackagePatterns": [
