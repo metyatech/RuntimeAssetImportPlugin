@@ -17,6 +17,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Misc/OutputDevice.h"
 #include "RuntimeAssetImport.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -27,6 +28,19 @@ DEFINE_LOG_CATEGORY_STATIC(LogRuntimeAssetImportSmoke, Log, All);
 
 namespace
 {
+    class FAssimpUnavailableLogCapture final : public FOutputDevice
+    {
+    public:
+        bool bObserved = false;
+
+        virtual void Serialize(const TCHAR *Message, ELogVerbosity::Type Verbosity, const FName &Category) override
+        {
+            bObserved = bObserved ||
+                        (Verbosity == ELogVerbosity::Error &&
+                         FString(Message).Contains(TEXT("Assimp is unavailable")));
+        }
+    };
+
     enum class ESmokeMaterialExpectation : uint8
     {
         Any,
@@ -473,6 +487,12 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
 
 void URuntimeAssetImportSmokeGameInstance::RunMissingDllSmoke()
 {
+    FAssimpUnavailableLogCapture LogCapture;
+    if (GLog != nullptr)
+    {
+        GLog->AddOutputDevice(&LogCapture);
+    }
+
     const FString AssetPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("SmokeAssets/test_triangle.obj"));
     ELoadMeshFromAssetFileResult FileResult = ELoadMeshFromAssetFileResult::Success;
     const FLoadedMeshData FileData = UAssetLoader::LoadMeshFromAssetFile(AssetPath, FileResult);
@@ -487,6 +507,14 @@ void URuntimeAssetImportSmokeGameInstance::RunMissingDllSmoke()
     const bool bMemoryFailure = !bAssetRead || MemoryResult == ELoadMeshFromAssetDataResult::Failure;
     const bool bLoadedDataEmpty = FileData.NodeList.IsEmpty() && FileData.MaterialList.IsEmpty() &&
                                   MemoryData.NodeList.IsEmpty() && MemoryData.MaterialList.IsEmpty();
+    if (GLog != nullptr)
+    {
+        GLog->FlushThreadedLogs();
+        GLog->Flush();
+        GLog->RemoveOutputDevice(&LogCapture);
+    }
+    const bool bErrorLogObserved = LogCapture.bObserved;
+    const bool bAssimpAvailable = FRuntimeAssetImportModule::Get().IsAssimpAvailable();
     const bool bOverallSuccess = bFileFailure && bMemoryFailure && bLoadedDataEmpty;
 
     TSharedRef<FJsonObject> JsonRoot = MakeShared<FJsonObject>();
@@ -494,6 +522,8 @@ void URuntimeAssetImportSmokeGameInstance::RunMissingDllSmoke()
     JsonRoot->SetBoolField(TEXT("FileFailure"), bFileFailure);
     JsonRoot->SetBoolField(TEXT("MemoryFailure"), bMemoryFailure);
     JsonRoot->SetBoolField(TEXT("LoadedDataEmpty"), bLoadedDataEmpty);
+    JsonRoot->SetBoolField(TEXT("ErrorLogObserved"), bErrorLogObserved);
+    JsonRoot->SetBoolField(TEXT("AssimpAvailable"), bAssimpAvailable);
     JsonRoot->SetStringField(TEXT("AssetPath"), AssetPath);
 
     FString JsonText;

@@ -8,7 +8,7 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRuntimeAssetImport, Log, All);
 
-class FRuntimeAssetImportModule : public IModuleInterface
+class RUNTIMEASSETIMPORT_API FRuntimeAssetImportModule : public IModuleInterface
 {
 public:
     static FRuntimeAssetImportModule &Get();

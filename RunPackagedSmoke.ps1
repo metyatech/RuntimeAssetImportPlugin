@@ -184,7 +184,14 @@ function Invoke-PackagedExecutable
     $ExitCode = $Process.ExitCode
     $Process.Dispose()
     $Transcript = [string]::Join("`n", @($StandardOutput, $StandardError))
-    [System.IO.File]::WriteAllText($LogPath, $Transcript, $Utf8NoBom)
+    if ([System.IO.File]::Exists($LogPath))
+    {
+        [System.IO.File]::AppendAllText($LogPath, "`n$Transcript", $Utf8NoBom)
+    }
+    else
+    {
+        [System.IO.File]::WriteAllText($LogPath, $Transcript, $Utf8NoBom)
+    }
     if ($ExitCode -ne 0)
     {
         throw "Packaged smoke executable exited with code $ExitCode.`n$Transcript"
@@ -994,7 +1001,7 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
     $RuntimeLogPath = Join-Path $WorkRoot 'smoke.log'
 
     $RuntimeArguments = @(
-        '-unattended', '-nosplash', '-nosound', '-RenderOffscreen',
+        '-unattended', '-nosplash', '-nosound', '-RenderOffscreen', '-log', '-stdout',
         ("-abslog=$RuntimeLogPath"), ("-UserDir=$RuntimeUserDirectory"))
     $RuntimeTranscript = Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
         -WorkingDirectory ([System.IO.Path]::GetDirectoryName($PackagedExecutable)) `
@@ -1091,28 +1098,34 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         $MissingDllUserDirectory = Join-Path $WorkRoot 'MissingDllUser'
         [void][System.IO.Directory]::CreateDirectory($MissingDllUserDirectory)
         $MissingDllLogPath = Join-Path $WorkRoot 'missing-dll-smoke.log'
-        $MissingDllResultPath = Join-Path $MissingDllUserDirectory 'RuntimeAssetImportMissingDllSmoke.json'
         $MissingDllArguments = @(
-            '-unattended', '-nosplash', '-nosound', '-RenderOffscreen',
+            '-unattended', '-nosplash', '-nosound', '-RenderOffscreen', '-log', '-stdout',
             '-RuntimeAssetImportMissingDllSmoke', ("-abslog=$MissingDllLogPath"),
             ("-UserDir=$MissingDllUserDirectory"))
-        [void](Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
+        $MissingDllTranscript = [string](Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
             -WorkingDirectory ([System.IO.Path]::GetDirectoryName($PackagedExecutable)) `
             -Arguments $MissingDllArguments -LogPath $MissingDllLogPath)
+        $MissingDllResultFiles = [System.IO.Directory]::GetFiles(
+            $WorkRoot, 'RuntimeAssetImportMissingDllSmoke.json', [System.IO.SearchOption]::AllDirectories)
+        if ($MissingDllResultFiles.Length -ne 1)
+        {
+            throw "Expected exactly one RuntimeAssetImportMissingDllSmoke.json, found $($MissingDllResultFiles.Length)."
+        }
+        $MissingDllResultPath = $MissingDllResultFiles[0]
         Assert-RequiredFile -Path $MissingDllResultPath
         $MissingDllResult = Get-Content -Raw -LiteralPath $MissingDllResultPath | ConvertFrom-Json
-        foreach ($MissingDllField in @('OverallSuccess', 'FileFailure', 'MemoryFailure', 'LoadedDataEmpty'))
+        foreach ($MissingDllField in @('OverallSuccess', 'FileFailure', 'MemoryFailure', 'LoadedDataEmpty', 'ErrorLogObserved'))
         {
             if ($MissingDllResult.$MissingDllField -ne $true)
             {
                 throw "Missing DLL smoke field is not true: $MissingDllField"
             }
         }
-        $MissingDllLogText = [System.IO.File]::ReadAllText($MissingDllLogPath)
-        if ($MissingDllLogText.IndexOf('Assimp is unavailable', [System.StringComparison]::OrdinalIgnoreCase) -lt 0)
+        if ($MissingDllResult.AssimpAvailable -ne $false)
         {
-            throw 'Missing DLL smoke log does not contain the expected unavailable-Assimp error.'
+            throw 'Missing DLL smoke did not observe an unavailable Assimp module.'
         }
+        $MissingDllLogText = [System.IO.File]::ReadAllText($MissingDllLogPath) + "`n" + $MissingDllTranscript
         foreach ($ForbiddenMissingDllPattern in @('fatal error', 'unhandled exception'))
         {
             if ($MissingDllLogText.IndexOf($ForbiddenMissingDllPattern, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
