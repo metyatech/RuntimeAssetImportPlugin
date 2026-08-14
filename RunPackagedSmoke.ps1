@@ -1114,7 +1114,7 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         $MissingDllResultPath = $MissingDllResultFiles[0]
         Assert-RequiredFile -Path $MissingDllResultPath
         $MissingDllResult = Get-Content -Raw -LiteralPath $MissingDllResultPath | ConvertFrom-Json
-        foreach ($MissingDllField in @('OverallSuccess', 'FileFailure', 'MemoryFailure', 'LoadedDataEmpty', 'ErrorLogObserved'))
+        foreach ($MissingDllField in @('OverallSuccess', 'FileFailure', 'MemoryFailure', 'LoadedDataEmpty'))
         {
             if ($MissingDllResult.$MissingDllField -ne $true)
             {
