@@ -24,7 +24,7 @@
 - [x] Process-CWD-independent relative path resolution
 - [x] Auxiliary hard-link rejection
 - [x] Quaternion validity validation
-- [x] FabPluginRelease.json validated by fab-plugin-release-tools 0.3.1
+- [x] FabPluginRelease.json validated by fab-plugin-release-tools 0.4.0
 - [x] Repository-specific ZIP implementation replaced by pinned central release pipeline
 - [x] Deterministic ZIP, SHA-256, JSON report, and release log generated
 - [x] Direct ZIP inspection, safe extraction, and manifest comparison pass

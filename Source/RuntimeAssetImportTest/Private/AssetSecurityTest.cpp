@@ -3,6 +3,7 @@
 #include "AssetImportLimits.h"
 #include "AssetLoader.h"
 #include "CoreMinimal.h"
+#include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -34,8 +35,10 @@ namespace
 
     FString GetSecurityTestAssetsDir()
     {
-        return FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
-                               TEXT("Source/RuntimeAssetImportTest/TestAssets"));
+        const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("RuntimeAssetImport"));
+        return Plugin.IsValid()
+                   ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/RuntimeAssetImportTest/TestAssets"))
+                   : FString();
     }
 
     bool SaveUtf8(const FString &Path, const FString &Contents)

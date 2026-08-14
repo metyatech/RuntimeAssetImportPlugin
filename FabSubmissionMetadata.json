@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "product": "Runtime Asset Import",
+  "technicalInformation": {
+    "features": [
+      "Import static 3D mesh files from disk at runtime.",
+      "Import mesh data from memory with external file access denied.",
+      "Construct Dynamic Mesh or Procedural Mesh data with embedded material and texture support."
+    ],
+    "codeModules": [{ "name": "RuntimeAssetImport", "type": "Runtime", "description": "Runtime mesh import and mesh-data construction module." }],
+    "numberOfBlueprints": 0,
+    "numberOfCppClasses": 2,
+    "networkReplicated": false,
+    "networkReplicationNotes": "The plugin does not provide network replication; the host project owns replication of any resulting runtime data.",
+    "supportedDevelopmentPlatforms": ["Win64"],
+    "supportedTargetBuildPlatforms": ["Win64"],
+    "dependencies": ["ProceduralMeshComponent", "Bundled Assimp 6.0.5"],
+    "prerequisites": ["Unreal Engine 5.4, 5.5, 5.7, or 5.8", "Windows 64-bit project"],
+    "documentationUrl": "https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/",
+    "exampleProjectUrl": null,
+    "exampleProjectNotes": "A separate example project is not required; the package includes the runtime content asset and documentation, while repository automation covers the import sample assets.",
+    "additionalNotes": "Third-party software is bundled: Assimp 6.0.5. The RuntimeAssetImportTest module and its test assets are repository-only and are not shipped in the Fab package."
+  }
+}

@@ -13,8 +13,11 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/Base64.h"
+#include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "RuntimeAssetImport.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "TimerManager.h"
@@ -268,6 +271,12 @@ void URuntimeAssetImportSmokeGameInstance::HandlePostWorldInitialization(
 
 void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
 {
+    if (FParse::Param(FCommandLine::Get(), TEXT("RuntimeAssetImportMissingDllSmoke")))
+    {
+        RunMissingDllSmoke();
+        return;
+    }
+
     FormatResults.Reset();
     FormatResults.Reserve(UE_ARRAY_COUNT(SmokeAssets));
 
@@ -460,6 +469,55 @@ void URuntimeAssetImportSmokeGameInstance::RunSmoke(UWorld *World)
 
     World->GetTimerManager().SetTimerForNextTick(
         FTimerDelegate::CreateUObject(this, &URuntimeAssetImportSmokeGameInstance::FinalizeSmoke, World));
+}
+
+void URuntimeAssetImportSmokeGameInstance::RunMissingDllSmoke()
+{
+    const FString AssetPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("SmokeAssets/test_triangle.obj"));
+    ELoadMeshFromAssetFileResult FileResult = ELoadMeshFromAssetFileResult::Success;
+    const FLoadedMeshData FileData = UAssetLoader::LoadMeshFromAssetFile(AssetPath, FileResult);
+
+    TArray<uint8> AssetBytes;
+    const bool bAssetRead = LoadSmokeAssetBytes(AssetPath, AssetBytes);
+    ELoadMeshFromAssetDataResult MemoryResult = ELoadMeshFromAssetDataResult::Success;
+    const FLoadedMeshData MemoryData = bAssetRead
+                                           ? UAssetLoader::LoadMeshFromAssetData(AssetBytes, MemoryResult)
+                                           : FLoadedMeshData{};
+    const bool bFileFailure = FileResult == ELoadMeshFromAssetFileResult::Failure;
+    const bool bMemoryFailure = !bAssetRead || MemoryResult == ELoadMeshFromAssetDataResult::Failure;
+    const bool bLoadedDataEmpty = FileData.NodeList.IsEmpty() && FileData.MaterialList.IsEmpty() &&
+                                  MemoryData.NodeList.IsEmpty() && MemoryData.MaterialList.IsEmpty();
+    const bool bOverallSuccess = bFileFailure && bMemoryFailure && bLoadedDataEmpty;
+
+    TSharedRef<FJsonObject> JsonRoot = MakeShared<FJsonObject>();
+    JsonRoot->SetBoolField(TEXT("OverallSuccess"), bOverallSuccess);
+    JsonRoot->SetBoolField(TEXT("FileFailure"), bFileFailure);
+    JsonRoot->SetBoolField(TEXT("MemoryFailure"), bMemoryFailure);
+    JsonRoot->SetBoolField(TEXT("LoadedDataEmpty"), bLoadedDataEmpty);
+    JsonRoot->SetStringField(TEXT("AssetPath"), AssetPath);
+
+    FString JsonText;
+    const TSharedRef<TJsonWriter<>> JsonWriter = TJsonWriterFactory<>::Create(&JsonText);
+    const bool bSerialized = FJsonSerializer::Serialize(JsonRoot, JsonWriter);
+    const FString ResultPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("RuntimeAssetImportMissingDllSmoke.json"));
+    const bool bSaved = bSerialized && FFileHelper::SaveStringToFile(
+                                           JsonText, *ResultPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    if (!bSaved)
+    {
+        UE_LOG(LogRuntimeAssetImportSmoke, Error, TEXT("Failed to write missing DLL smoke result JSON: '%s'."),
+               *ResultPath);
+    }
+    else
+    {
+        UE_LOG(LogRuntimeAssetImportSmoke, Display, TEXT("Missing DLL smoke result JSON: '%s'."), *ResultPath);
+    }
+
+    if (GLog != nullptr)
+    {
+        GLog->FlushThreadedLogs();
+        GLog->Flush();
+    }
+    FPlatformMisc::RequestExit(false);
 }
 
 void URuntimeAssetImportSmokeGameInstance::FinalizeSmoke(UWorld *World)

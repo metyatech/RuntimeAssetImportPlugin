@@ -11,6 +11,9 @@ DECLARE_LOG_CATEGORY_EXTERN(LogRuntimeAssetImport, Log, All);
 class FRuntimeAssetImportModule : public IModuleInterface
 {
 public:
+    static FRuntimeAssetImportModule &Get();
+    bool IsAssimpAvailable() const;
+
     /** IModuleInterface implementation */
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;

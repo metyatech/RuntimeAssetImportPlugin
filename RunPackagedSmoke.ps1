@@ -24,7 +24,7 @@ $CreatedDefaultWorkDirectory = [string]::IsNullOrWhiteSpace($WorkDirectory)
 $WorkRoot = $null
 $CompletedSuccessfully = $false
 $ExpectedSampleHead = 'b4c78058993e68a62fc9c16b673aec65ee668573'
-$ExpectedToolVersion = '0.3.1'
+$ExpectedToolVersion = '0.4.0'
 
 function ConvertTo-NativeArgument
 {
@@ -132,6 +132,64 @@ function Invoke-NativeCommand
         StandardOutput = $StandardOutput
         StandardError = $StandardError
     }
+}
+
+function Invoke-PackagedExecutable
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$ExecutablePath,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$LogPath
+    )
+
+    $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $StartInfo.FileName = $ExecutablePath
+    $StartInfo.WorkingDirectory = $WorkingDirectory
+    $StartInfo.UseShellExecute = $false
+    $StartInfo.CreateNoWindow = $true
+    $StartInfo.RedirectStandardOutput = $true
+    $StartInfo.RedirectStandardError = $true
+    if ($null -ne $StartInfo.PSObject.Properties['ArgumentList'])
+    {
+        foreach ($Argument in $Arguments)
+        {
+            [void]$StartInfo.ArgumentList.Add($Argument)
+        }
+    }
+    else
+    {
+        $StartInfo.Arguments = [string]::Join(' ', @($Arguments | ForEach-Object {
+                    ConvertTo-NativeArgument -Argument $_
+                }))
+    }
+
+    Write-Host "Running packaged smoke executable: $ExecutablePath" -ForegroundColor Cyan
+    $Process = New-Object System.Diagnostics.Process
+    $Process.StartInfo = $StartInfo
+    if (-not $Process.Start())
+    {
+        throw "Failed to start packaged executable: $ExecutablePath"
+    }
+    $StandardOutputTask = $Process.StandardOutput.ReadToEndAsync()
+    $StandardErrorTask = $Process.StandardError.ReadToEndAsync()
+    if (-not $Process.WaitForExit(120000))
+    {
+        $Process.Kill()
+        $Process.WaitForExit()
+        throw 'Packaged smoke executable did not exit within 120 seconds.'
+    }
+    $StandardOutput = $StandardOutputTask.GetAwaiter().GetResult()
+    $StandardError = $StandardErrorTask.GetAwaiter().GetResult()
+    $ExitCode = $Process.ExitCode
+    $Process.Dispose()
+    $Transcript = [string]::Join("`n", @($StandardOutput, $StandardError))
+    [System.IO.File]::WriteAllText($LogPath, $Transcript, $Utf8NoBom)
+    if ($ExitCode -ne 0)
+    {
+        throw "Packaged smoke executable exited with code $ExitCode.`n$Transcript"
+    }
+    return $Transcript
 }
 
 function Invoke-BatchFile
@@ -252,6 +310,22 @@ function Test-IsSameOrDescendantPath
     return $ResolvedCandidate.Equals($ResolvedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
         $ResolvedCandidate.StartsWith($ResolvedRoot + [System.IO.Path]::DirectorySeparatorChar,
             [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-RelativePath
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $BaseRoot = [System.IO.Path]::GetFullPath($BasePath).TrimEnd('\', '/') + '\'
+    $FullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-IsSameOrDescendantPath -Root $BasePath -Candidate $FullPath))
+    {
+        throw "Path is outside the expected base directory: $FullPath"
+    }
+    return $FullPath.Substring($BaseRoot.Length).Replace('/', '\')
 }
 
 function Invoke-GitValue
@@ -719,7 +793,7 @@ try
     Assert-RequiredDirectory -Path $StagedPluginRoot
     Assert-RequiredFile -Path (Join-Path $StagedPluginRoot 'RuntimeAssetImport.uplugin')
 
-    $TempPluginRoot = Join-Path $TempSampleRoot 'Plugins\RuntimeAssetImport'
+    $TempPluginRoot = Join-Path $TempSampleRoot 'Plugins\FabReviewRenamedFolder'
     Remove-DirectorySafely -Path $TempPluginRoot -AllowedRoot $TempSampleRoot
     Copy-Directory -Source $StagedPluginRoot -Destination $TempPluginRoot
     if ([System.IO.Directory]::Exists((Join-Path $TempPluginRoot 'Source\RuntimeAssetImportTest')))
@@ -917,65 +991,12 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
     [void][System.IO.Directory]::CreateDirectory($RuntimeUserDirectory)
     $RuntimeLogPath = Join-Path $WorkRoot 'smoke.log'
 
-    $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $StartInfo.FileName = $PackagedExecutable
-    $StartInfo.WorkingDirectory = [System.IO.Path]::GetDirectoryName($PackagedExecutable)
-    $StartInfo.UseShellExecute = $false
-    $StartInfo.CreateNoWindow = $true
-    $StartInfo.RedirectStandardOutput = $true
-    $StartInfo.RedirectStandardError = $true
     $RuntimeArguments = @(
         '-unattended', '-nosplash', '-nosound', '-RenderOffscreen',
         ("-abslog=$RuntimeLogPath"), ("-UserDir=$RuntimeUserDirectory"))
-    if ($null -ne $StartInfo.PSObject.Properties['ArgumentList'])
-    {
-        foreach ($RuntimeArgument in $RuntimeArguments)
-        {
-            [void]$StartInfo.ArgumentList.Add($RuntimeArgument)
-        }
-    }
-    else
-    {
-        $StartInfo.Arguments = [string]::Join(' ', @($RuntimeArguments | ForEach-Object {
-                    ConvertTo-NativeArgument -Argument $_
-                }))
-    }
-
-    Write-Host "Running packaged smoke executable: $PackagedExecutable" -ForegroundColor Cyan
-    $RuntimeProcess = New-Object System.Diagnostics.Process
-    $RuntimeProcess.StartInfo = $StartInfo
-    if (-not $RuntimeProcess.Start())
-    {
-        throw "Failed to start packaged executable: $PackagedExecutable"
-    }
-    $RuntimeOutputTask = $RuntimeProcess.StandardOutput.ReadToEndAsync()
-    $RuntimeErrorTask = $RuntimeProcess.StandardError.ReadToEndAsync()
-    if (-not $RuntimeProcess.WaitForExit(120000))
-    {
-        $RuntimeProcess.Kill()
-        $RuntimeProcess.WaitForExit()
-        throw 'Packaged smoke executable did not exit within 120 seconds.'
-    }
-    $RuntimeOutput = $RuntimeOutputTask.GetAwaiter().GetResult()
-    $RuntimeError = $RuntimeErrorTask.GetAwaiter().GetResult()
-    $RuntimeExitCode = $RuntimeProcess.ExitCode
-    $RuntimeProcess.Dispose()
-    if ($RuntimeExitCode -ne 0)
-    {
-        throw "Packaged smoke executable exited with code $RuntimeExitCode.`n$RuntimeOutput`n$RuntimeError"
-    }
-    $RuntimeTranscript = [string]::Join("`n", @($RuntimeOutput, $RuntimeError))
-    if ([System.IO.File]::Exists($RuntimeLogPath))
-    {
-        if (-not [string]::IsNullOrWhiteSpace($RuntimeTranscript))
-        {
-            [System.IO.File]::AppendAllText($RuntimeLogPath, "`n$RuntimeTranscript", $Utf8NoBom)
-        }
-    }
-    else
-    {
-        [System.IO.File]::WriteAllText($RuntimeLogPath, $RuntimeTranscript, $Utf8NoBom)
-    }
+    $RuntimeTranscript = Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
+        -WorkingDirectory ([System.IO.Path]::GetDirectoryName($PackagedExecutable)) `
+        -Arguments $RuntimeArguments -LogPath $RuntimeLogPath
 
     $SmokeResultFiles = [System.IO.Directory]::GetFiles(
         $WorkRoot, 'RuntimeAssetImportSmoke.json', [System.IO.SearchOption]::AllDirectories)
@@ -1042,6 +1063,70 @@ GameInstanceClass=/Script/RuntimeAssetImportSample.RuntimeAssetImportSmokeGameIn
         if ([int]$FormatResult.TriangleCount -le 0 -or [int]$FormatResult.MaterialCount -le 0)
         {
             throw "$($FormatResult.Format) smoke geometry or material count is not positive."
+        }
+    }
+
+    $MissingDllPaths = @([System.IO.Directory]::GetFiles(
+            $ArchiveDirectory, 'assimp-vc143-mt.dll', [System.IO.SearchOption]::AllDirectories))
+    if ($MissingDllPaths.Length -lt 1)
+    {
+        throw 'The packaged output does not contain assimp-vc143-mt.dll for the missing DLL smoke.'
+    }
+    $MissingDllBackupRoot = Join-Path $WorkRoot 'MissingDllBackup'
+    [void][System.IO.Directory]::CreateDirectory($MissingDllBackupRoot)
+    $MissingDllBackupPaths = New-Object System.Collections.Generic.List[string]
+    try
+    {
+        foreach ($MissingDllPath in $MissingDllPaths)
+        {
+            $RelativeDllPath = Get-RelativePath -BasePath $ArchiveDirectory -Path $MissingDllPath
+            $BackupPath = Join-Path $MissingDllBackupRoot $RelativeDllPath
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($BackupPath))
+            Move-Item -LiteralPath $MissingDllPath -Destination $BackupPath
+            $MissingDllBackupPaths.Add($BackupPath)
+        }
+
+        $MissingDllUserDirectory = Join-Path $WorkRoot 'MissingDllUser'
+        [void][System.IO.Directory]::CreateDirectory($MissingDllUserDirectory)
+        $MissingDllLogPath = Join-Path $WorkRoot 'missing-dll-smoke.log'
+        $MissingDllResultPath = Join-Path $MissingDllUserDirectory 'RuntimeAssetImportMissingDllSmoke.json'
+        $MissingDllArguments = @(
+            '-unattended', '-nosplash', '-nosound', '-RenderOffscreen',
+            '-RuntimeAssetImportMissingDllSmoke', ("-abslog=$MissingDllLogPath"),
+            ("-UserDir=$MissingDllUserDirectory"))
+        [void](Invoke-PackagedExecutable -ExecutablePath $PackagedExecutable `
+            -WorkingDirectory ([System.IO.Path]::GetDirectoryName($PackagedExecutable)) `
+            -Arguments $MissingDllArguments -LogPath $MissingDllLogPath)
+        Assert-RequiredFile -Path $MissingDllResultPath
+        $MissingDllResult = Get-Content -Raw -LiteralPath $MissingDllResultPath | ConvertFrom-Json
+        foreach ($MissingDllField in @('OverallSuccess', 'FileFailure', 'MemoryFailure', 'LoadedDataEmpty'))
+        {
+            if ($MissingDllResult.$MissingDllField -ne $true)
+            {
+                throw "Missing DLL smoke field is not true: $MissingDllField"
+            }
+        }
+        $MissingDllLogText = [System.IO.File]::ReadAllText($MissingDllLogPath)
+        if ($MissingDllLogText.IndexOf('Assimp is unavailable', [System.StringComparison]::OrdinalIgnoreCase) -lt 0)
+        {
+            throw 'Missing DLL smoke log does not contain the expected unavailable-Assimp error.'
+        }
+        foreach ($ForbiddenMissingDllPattern in @('fatal error', 'unhandled exception'))
+        {
+            if ($MissingDllLogText.IndexOf($ForbiddenMissingDllPattern, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+            {
+                throw "Missing DLL smoke log contains forbidden text: $ForbiddenMissingDllPattern"
+            }
+        }
+    }
+    finally
+    {
+        foreach ($MissingDllBackupPath in $MissingDllBackupPaths)
+        {
+            $RelativeDllPath = Get-RelativePath -BasePath $MissingDllBackupRoot -Path $MissingDllBackupPath
+            $RestorePath = Join-Path $ArchiveDirectory $RelativeDllPath
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($RestorePath))
+            Move-Item -LiteralPath $MissingDllBackupPath -Destination $RestorePath
         }
     }
 

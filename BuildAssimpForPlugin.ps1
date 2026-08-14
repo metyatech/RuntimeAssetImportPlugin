@@ -902,8 +902,6 @@ try
         $NormalizedRevisionText, "`r`n|`r", "`n")
     [System.IO.File]::WriteAllText(
         (Join-Path $PayloadHeaders 'revision.h'), $NormalizedRevisionText, $Utf8NoBom)
-    [System.IO.File]::Copy($SourceLicense, (Join-Path $PayloadAssimpRoot 'LICENSE'), $true)
-
     $LicenseCopyRecords = @(
         [ordered]@{ Source = 'LICENSE'; Destination = 'assimp/LICENSE' },
         [ordered]@{ Source = 'contrib/clipper/License.txt'; Destination = 'contrib/clipper/License.txt' },
@@ -1044,7 +1042,8 @@ try
         CMakeOptions = $CMakeOptionRecords
         EnabledImporters = $EnabledImporters
         EnabledExporters = $EnabledExporters
-        ThirdPartyLicenseFiles = $ThirdPartyLicenseFileArray
+        SourceLicenseProvenanceFiles = @('LICENSE') + $ThirdPartyLicenseFileArray
+        DistributedThirdPartyNoticeFile = 'assimp.tps'
         AssimpCommandBuildWorkaround =
             'The generated assimp_cmd project compiles only WriteDump.cpp with ASSIMP_BUILD_NO_EXPORT because Assimp 6.0.5 otherwise links disabled ASSBIN and ASSXML dump writers. The Assimp source tree is unchanged.'
         Dll = [ordered]@{
@@ -1100,9 +1099,68 @@ try
     [System.IO.File]::WriteAllText(
         (Join-Path $GeneratedAssetDirectory 'GENERATED-ASSETS.md'), $GeneratedAssetsText, $Utf8NoBom)
 
+    $NoticeSections = New-Object System.Collections.Generic.List[string]
+    foreach ($NoticePath in @(
+            [ordered]@{ Label = 'Assimp BSD-3-Clause'; Path = $SourceLicense; Text = $null },
+            [ordered]@{ Label = 'Assimp BSD-3-Clause provenance copy'; Path = Join-Path $SourceDirectory 'LICENSES/assimp/LICENSE'; Text = $null },
+            [ordered]@{ Label = 'Clipper'; Path = Join-Path $SourceDirectory 'contrib/clipper/License.txt'; Text = $null },
+            [ordered]@{ Label = 'earcut-hpp'; Path = Join-Path $SourceDirectory 'contrib/earcut-hpp/LICENSE'; Text = $null },
+            [ordered]@{ Label = 'OpenDDLParser'; Path = Join-Path $SourceDirectory 'contrib/openddlparser/LICENSE'; Text = $null },
+            [ordered]@{ Label = 'Open3DGC'; Path = $null; Text = $Open3DgcLicenseText },
+            [ordered]@{ Label = 'Poly2Tri'; Path = Join-Path $SourceDirectory 'contrib/poly2tri/LICENSE'; Text = $null },
+            [ordered]@{ Label = 'pugixml'; Path = Join-Path $SourceDirectory 'contrib/pugixml/LICENSE.md'; Text = $null },
+            [ordered]@{ Label = 'RapidJSON'; Path = Join-Path $SourceDirectory 'contrib/rapidjson/license.txt'; Text = $null },
+            [ordered]@{ Label = 'stb'; Path = $null; Text = $StbLicenseText },
+            [ordered]@{ Label = 'MiniZip'; Path = Join-Path $SourceDirectory 'contrib/unzip/MiniZip64_info.txt'; Text = $null },
+            [ordered]@{ Label = 'utf8cpp'; Path = Join-Path $SourceDirectory 'contrib/utf8cpp/doc/LICENSE'; Text = $null },
+            [ordered]@{ Label = 'zlib'; Path = Join-Path $SourceDirectory 'contrib/zlib/LICENSE'; Text = $null }))
+    {
+        $NoticeText = if ($null -ne $NoticePath.Text)
+        {
+            $NoticePath.Text
+        }
+        else
+        {
+            Assert-RequiredFile -Path $NoticePath.Path
+            [System.IO.File]::ReadAllText($NoticePath.Path)
+        }
+        $NoticeSections.Add("=== $($NoticePath.Label) ===")
+        $NoticeSections.Add($NoticeText.TrimEnd("`r", "`n"))
+        $NoticeSections.Add('')
+    }
+    $EscapedNoticeText = [System.Security.SecurityElement]::Escape([string]::Join("`n", $NoticeSections))
+    $TpsText = @"
+<?xml version=""1.0"" encoding=""utf-8""?>
+<TpsData xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"">
+  <Name>assimp</Name>
+  <Location>/Source/ThirdParty/assimp/</Location>
+  <Function>Open Asset Import Library. Loads 3D model files in various formats (FBX, OBJ, GLTF, etc.) at runtime.</Function>
+  <Eula>https://github.com/assimp/assimp/blob/v6.0.5/LICENSE</Eula>
+  <RedistributeTo>
+    <EndUserGroup>Licensees</EndUserGroup>
+    <EndUserGroup>Git</EndUserGroup>
+    <EndUserGroup>P4</EndUserGroup>
+  </RedistributeTo>
+  <LicenseFolder>/Source/ThirdParty/assimp/</LicenseFolder>
+  <AdditionalInfo>
+    <Name>assimp</Name>
+    <Version>6.0.5</Version>
+    <Url>https://github.com/assimp/assimp/releases/tag/v6.0.5</Url>
+    <License>BSD-3-Clause</License>
+  </AdditionalInfo>
+  <DistributedThirdPartyNoticeFile>assimp.tps</DistributedThirdPartyNoticeFile>
+  <NoticeText>
+$EscapedNoticeText
+  </NoticeText>
+</TpsData>
+"@
+    [System.IO.File]::WriteAllText((Join-Path $PayloadAssimpRoot 'assimp.tps'), $TpsText.TrimStart(), $Utf8NoBom)
+
+    Remove-DirectorySafely -Path $PayloadLicenses -AllowedRoot $PayloadAssimpRoot
+
     foreach ($PayloadRequiredFile in @(
             $PayloadDll, $PayloadLibFile, (Join-Path $PayloadHeaders 'config.h'),
-            (Join-Path $PayloadHeaders 'revision.h'), (Join-Path $PayloadAssimpRoot 'LICENSE'),
+            (Join-Path $PayloadHeaders 'revision.h'), (Join-Path $PayloadAssimpRoot 'assimp.tps'),
             (Join-Path $PayloadAssimpRoot 'BUILD-INFO.json')))
     {
         Assert-RequiredFile -Path $PayloadRequiredFile
@@ -1131,7 +1189,7 @@ try
             }
         }
         foreach ($ReplacementFile in @(
-                (Join-Path $ReplacementAssimpRoot 'LICENSE'),
+            (Join-Path $ReplacementAssimpRoot 'LICENSE'),
                 (Join-Path $ReplacementAssimpRoot 'BUILD-INFO.json')))
         {
             if ([System.IO.File]::Exists($ReplacementFile))

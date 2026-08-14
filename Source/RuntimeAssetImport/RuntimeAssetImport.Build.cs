@@ -33,6 +33,7 @@ public class RuntimeAssetImport : ModuleRules
                 "GeometryCore",
                 "ImageWrapper",
                 "MeshConversion",
+                "Projects",
             }
         );
     }

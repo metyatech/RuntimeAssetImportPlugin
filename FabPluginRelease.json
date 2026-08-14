@@ -50,13 +50,16 @@
     "Content",
     "Resources",
     "Source/RuntimeAssetImport",
-    "Source/ThirdParty/assimp"
+    "Source/ThirdParty/assimp/Bin",
+    "Source/ThirdParty/assimp/Include",
+    "Source/ThirdParty/assimp/Lib"
   ],
   "includeFiles": [
     "RuntimeAssetImport.uplugin",
     "README.md",
-    "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "Source/ThirdParty/assimp/assimp.Build.cs",
+    "Source/ThirdParty/assimp/assimp.tps",
+    "Source/ThirdParty/assimp/BUILD-INFO.json"
   ],
   "requiredPackageFiles": [
     "RuntimeAssetImport.uplugin",
@@ -66,37 +69,14 @@
     "Source/RuntimeAssetImport/RuntimeAssetImport.Build.cs",
     "Source/ThirdParty/assimp/assimp.Build.cs",
     "Source/ThirdParty/assimp/BUILD-INFO.json",
-    "Source/ThirdParty/assimp/LICENSE",
+    "Source/ThirdParty/assimp/assimp.tps",
     "Source/ThirdParty/assimp/Bin/Win64/assimp-vc143-mt.dll",
     "Source/ThirdParty/assimp/Lib/Win64/assimp-vc143-mt.lib",
-    "README.md",
-    "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "README.md"
   ],
   "customDistributionPaths": [
-    "README.md",
-    "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
   ],
-  "thirdPartyLicenseSets": [
-    {
-      "root": "Source/ThirdParty/assimp/LICENSES",
-      "files": [
-        "assimp/LICENSE",
-        "contrib/Open3DGC/LICENSE.txt",
-        "contrib/clipper/License.txt",
-        "contrib/earcut-hpp/LICENSE",
-        "contrib/openddlparser/LICENSE",
-        "contrib/poly2tri/LICENSE",
-        "contrib/pugixml/LICENSE.md",
-        "contrib/rapidjson/license.txt",
-        "contrib/stb/LICENSE.txt",
-        "contrib/unzip/MiniZip64_info.txt",
-        "contrib/utf8cpp/doc/LICENSE",
-        "contrib/zlib/LICENSE"
-      ]
-    }
-  ],
+  "thirdPartyLicenseSets": [],
   "forbiddenPackagePatterns": [
     "^Source/RuntimeAssetImportTest(?:/|$)",
     "^(BuildAssimpForPlugin\\.ps1|PackageForFab\\.ps1|RunPackagedSmoke\\.ps1|MarketplaceListing\\.md|FabSubmissionChecklist\\.md|LICENSE-MIT-LEGACY)$",
@@ -106,7 +86,8 @@
     "^Source/ThirdParty/assimp/LICENSES/packaging(?:/|$)",
     "^Source/ThirdParty/assimp/LICENSES/port(?:/|$)",
     "^Source/ThirdParty/assimp/LICENSES/test(?:/|$)",
-    "^Source/ThirdParty/assimp/LICENSES/contrib/zlib/contrib/dotzlib(?:/|$)",
+    "^Source/ThirdParty/assimp/LICENSES(?:/|$)",
+    "(^|/)(?:LICENSE|LICENCE|COPYING|NOTICE|THIRD_PARTY_NOTICES)(?:[._-].*)?$",
     "(^|/)assimp\\.exe$"
   ],
   "buildLogFailPatterns": []

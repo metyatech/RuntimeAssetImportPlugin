@@ -6,6 +6,7 @@
 #include "CompressedTextureValidation.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Interfaces/IPluginManager.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Base64.h"
@@ -18,8 +19,10 @@ namespace
 {
     FString ResolveTextureTestAssetPath(const TCHAR *RelativePath)
     {
-        return FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
-                               TEXT("Source/RuntimeAssetImportTest/TestAssets"), RelativePath);
+        const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("RuntimeAssetImport"));
+        return Plugin.IsValid()
+                   ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/RuntimeAssetImportTest/TestAssets"), RelativePath)
+                   : FString();
     }
 
     uint32 CalculatePngCrc32(const uint8 *Data, const int32 ByteCount)

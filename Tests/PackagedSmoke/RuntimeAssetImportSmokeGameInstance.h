@@ -52,6 +52,7 @@ public:
 private:
     void HandlePostWorldInitialization(UWorld *World, const UWorld::InitializationValues InitializationValues);
     void RunSmoke(UWorld *World);
+    void RunMissingDllSmoke();
     void FinalizeSmoke(UWorld *World);
     void WriteResultsAndExit();
 

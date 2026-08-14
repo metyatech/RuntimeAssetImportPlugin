@@ -3,6 +3,7 @@
 #include "AssetLoader.h"
 #include "CoreMinimal.h"
 #include "HasFeatureFix.h"
+#include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Windows/WindowsHWrapper.h"
@@ -17,8 +18,10 @@ namespace
 
     FString GetTestAssetsDir()
     {
-        return FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("RuntimeAssetImport"),
-                               TEXT("Source/RuntimeAssetImportTest/TestAssets"));
+        const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("RuntimeAssetImport"));
+        return Plugin.IsValid()
+                   ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/RuntimeAssetImportTest/TestAssets"))
+                   : FString();
     }
 
     bool AssertValidLoadedMesh(FAutomationTestBase &Test, const FString &Label, const FLoadedMeshData &MeshData)

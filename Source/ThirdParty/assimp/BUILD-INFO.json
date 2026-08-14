@@ -159,7 +159,8 @@
     "FBX",
     "GLTF"
   ],
-  "ThirdPartyLicenseFiles": [
+  "SourceLicenseProvenanceFiles": [
+    "LICENSE",
     "LICENSES/assimp/LICENSE",
     "LICENSES/contrib/Open3DGC/LICENSE.txt",
     "LICENSES/contrib/clipper/License.txt",
@@ -173,6 +174,7 @@
     "LICENSES/contrib/utf8cpp/doc/LICENSE",
     "LICENSES/contrib/zlib/LICENSE"
   ],
+  "DistributedThirdPartyNoticeFile": "assimp.tps",
   "AssimpCommandBuildWorkaround": "The generated assimp_cmd project compiles only WriteDump.cpp with ASSIMP_BUILD_NO_EXPORT because Assimp 6.0.5 otherwise links disabled ASSBIN and ASSXML dump writers. The Assimp source tree is unchanged.",
   "Dll": {
     "FileName": "assimp-vc143-mt.dll",

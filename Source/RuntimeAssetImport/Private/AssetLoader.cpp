@@ -9,6 +9,7 @@
 #include "LogAssetLoader.h"
 #include "Misc/Paths.h"
 #include "RestrictedAssimpIOSystem.h"
+#include "RuntimeAssetImport.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/pbrmaterial.h>
@@ -617,6 +618,12 @@ FLoadedMeshData UAssetLoader::LoadMeshFromAssetFile(const FString &FilePath,
                                                     ELoadMeshFromAssetFileResult &LoadMeshFromAssetFileResult)
 {
     LoadMeshFromAssetFileResult = ELoadMeshFromAssetFileResult::Failure;
+    if (!FRuntimeAssetImportModule::Get().IsAssimpAvailable())
+    {
+        UE_LOG(LogAssetLoader, Error,
+               TEXT("Assimp is unavailable; LoadMeshFromAssetFile will return failure without calling Assimp."));
+        return {};
+    }
     if (FilePath.IsEmpty())
     {
         UE_LOG(LogAssetLoader, Error, TEXT("Asset file path is empty: '%s'."), *FilePath);
@@ -663,6 +670,12 @@ FLoadedMeshData UAssetLoader::LoadMeshFromAssetData(const TArray<uint8> &AssetDa
                                                     ELoadMeshFromAssetDataResult &LoadMeshFromAssetDataResult)
 {
     LoadMeshFromAssetDataResult = ELoadMeshFromAssetDataResult::Failure;
+    if (!FRuntimeAssetImportModule::Get().IsAssimpAvailable())
+    {
+        UE_LOG(LogAssetLoader, Error,
+               TEXT("Assimp is unavailable; LoadMeshFromAssetData will return failure without calling Assimp."));
+        return {};
+    }
     if (AssetData.IsEmpty())
     {
         UE_LOG(LogAssetLoader, Error, TEXT("Asset byte array is empty."));
