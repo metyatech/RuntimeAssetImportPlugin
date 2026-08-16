@@ -15,7 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ExpectedToolCommit = 'd9c4546e6414ea4c504115df2d863506a27c31d0'
+$ExpectedToolCommit = 'c59540b1f562b3baf6f07ad6bf919888a0e410d4'
 $ExpectedToolVersion = '0.4.0'
 
 function ConvertTo-NativeArgument {
