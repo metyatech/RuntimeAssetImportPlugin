@@ -65,7 +65,7 @@ To reuse an existing release ZIP, do not rerun packaging:
 pwsh .\RunPackagedSmoke.ps1 `
   -EngineVersion 5.8 `
   -SampleRoot ..\RuntimeAssetImportSample `
-  -PackageZipPath ..\FabArtifacts\RuntimeAssetImport_1.0.0_UE5.8_Win64.zip
+  -PackageZipPath ..\FabArtifacts\RuntimeAssetImport_1.0.1_UE5.8_Win64.zip
 ```
 
 The ZIP is inspected before extraction. Entry names must use safe relative

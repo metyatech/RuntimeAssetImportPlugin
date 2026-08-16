@@ -10,7 +10,7 @@ Distribution: Unreal Engine Code Plugin
 License: Fab Standard License
 Personal Price: $29.99
 Professional Price: $79.99
-Version: 1.0.0
+Version: 1.0.1
 Supported Target Platform: Win64
 Mature Content: No
 Generated with AI: Yes

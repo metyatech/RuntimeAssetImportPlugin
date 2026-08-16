@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.0.0",
+	"VersionName": "1.0.1",
 	"FriendlyName": "Runtime Asset Import",
 	"Description": "Import static 3D mesh files at runtime from files or memory and construct DynamicMesh or ProceduralMesh components on Win64.",
 	"Category": "Tools",
