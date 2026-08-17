@@ -29,6 +29,11 @@ Import static 3D meshes such as FBX, OBJ, glTF/GLB, and DAE at runtime on Win64.
 
 Runtime Asset Import loads static 3D mesh files at runtime in packaged Unreal Engine applications on Windows (Win64). Use Blueprint or C++ to import from a file path or an in-memory byte array, then create a Dynamic Mesh Component hierarchy or a Procedural Mesh Component hierarchy.
 
+Requirements / Dependencies:
+
+- ProceduralMeshComponent — required Unreal Engine plugin dependency. It must be enabled in the host project.
+- Assimp 6.0.5 — bundled with Runtime Asset Import; no separate installation is required.
+
 Tested formats:
 
 - FBX
@@ -80,6 +85,7 @@ Blueprint-callable C++ Functions: 6
 Network Replicated: No
 Development Platform: Windows Win64
 Target Platform: Windows Win64
+Dependencies: ProceduralMeshComponent (Unreal Engine plugin)
 Third Party: Assimp 6.0.5, BSD-3-Clause
 Documentation: https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/
 Support: https://github.com/metyatech/RuntimeAssetImportPlugin/issues
