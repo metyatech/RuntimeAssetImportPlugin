@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "listing_id": "6c5ea3fc-4071-4df3-b238-71721c78b60d",
+  "product": "Runtime Asset Import",
+  "version": "1.0.1",
+  "title": "Runtime Asset Import",
+  "short_description": "Import static 3D meshes such as FBX, OBJ, glTF/GLB, and DAE at runtime on Win64. Load from files or memory using Blueprint or C++, then build DynamicMesh or ProceduralMesh components.",
+  "long_description": "Runtime Asset Import loads static 3D mesh files at runtime in packaged Unreal Engine applications on Windows (Win64). Use Blueprint or C++ to import from a file path or an in-memory byte array, then create a Dynamic Mesh Component hierarchy or a Procedural Mesh Component hierarchy.\n\nRequirements / Dependencies:\n\n- ProceduralMeshComponent — required Unreal Engine plugin dependency. It must be enabled in the host project.\n- Assimp 6.0.5 — bundled with Runtime Asset Import; no separate installation is required.\n\nTested formats:\n\n- FBX\n- OBJ\n- glTF / GLB\n- DAE (Collada)\n\nKey features:\n\n- Runtime static mesh import without cooking the source model\n- Blueprint and C++ APIs\n- File and memory input\n- Hierarchical node transforms and multiple mesh sections\n- Diffuse color and the first diffuse/base-color texture per material\n- File imports can load auxiliary files such as OBJ material files, glTF buffers, and the first external diffuse/base-color texture.\n- Auxiliary files are restricted to the model directory and its subdirectories.\n- Embedded textures are supported for file and memory imports.\n- In-memory imports do not resolve external files.\n- File, auxiliary-file, and texture size limits apply.\n- Collision generation on constructed mesh components\n- Assimp 6.0.5 Win64 binaries built from the official source tag and bundled with the plugin\n\nThe bundled Assimp build includes the FBX, OBJ, glTF/GLB, and Collada importers used by this product. Unrelated importers are disabled.\n\nAutomated tests cover both file and in-memory import for FBX, OBJ, glTF, GLB, and DAE.\n\nDemo assets shown in screenshots are Poly Haven CC0 assets and are not included with the plugin.\n\nImportant limitations:\n\n- Win64 only\n- Import is synchronous and can block the calling thread for large files\n- Static geometry only; skeletal meshes, animations, morph targets, and LOD import are not supported\n- File imports resolve auxiliary files only inside the model directory and its subdirectories\n- In-memory imports support self-contained data and embedded textures only; external file references are not resolved\n- Only the first diffuse/base-color texture, first UV channel, and first vertex-color channel are used\n- File and texture size limits apply as documented\n- Compressed image dimensions and pixel counts are validated before texture decoding\n- Auxiliary files with multiple hard links are rejected\n- Runtime-created meshes are local and are not automatically replicated\n- ProceduralMeshComponent can cause movement/network issues in multiplayer; DynamicMeshComponent is recommended",
+  "product_type": "Tools & Plugins",
+  "category": "Engine Tools",
+  "subcategory": [],
+  "tags_ordered": [
+    "runtime",
+    "import",
+    "mesh",
+    "fbx",
+    "obj",
+    "gltf",
+    "glb",
+    "dae",
+    "assimp",
+    "dynamic mesh",
+    "procedural mesh",
+    "modding",
+    "blueprint"
+  ],
+  "included_format": "Unreal Engine",
+  "engine_versions": [
+    "5.4",
+    "5.5",
+    "5.7",
+    "5.8"
+  ],
+  "platforms": [
+    "Win64"
+  ],
+  "license": "Fab Standard License",
+  "personal_price_usd": 29.99,
+  "professional_price_usd": 79.99,
+  "mature_content": false,
+  "generated_with_ai": true,
+  "allows_usage_with_ai": true,
+  "promotional_content": false,
+  "forum_post": false,
+  "activation": "Manual activation",
+  "documentation_url": "https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/",
+  "support_url": "https://github.com/metyatech/RuntimeAssetImportPlugin/issues",
+  "source_repository_url": "https://github.com/metyatech/RuntimeAssetImportPlugin",
+  "media_order": [
+    "Marketing/Fab/FinalMedia/01-thumbnail.jpg",
+    "Marketing/Fab/FinalMedia/02-tested-formats.jpg",
+    "Marketing/Fab/FinalMedia/03-external-embedded-textures.jpg",
+    "Marketing/Fab/FinalMedia/04-blueprint-workflow.jpg",
+    "Marketing/Fab/FinalMedia/05-runtime-before-after.jpg"
+  ]
+}
