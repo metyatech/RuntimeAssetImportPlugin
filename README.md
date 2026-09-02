@@ -5,7 +5,7 @@ https://metyatech.github.io/unreal-plugin-docs/runtime-asset-import/
 ## Release packaging
 
 Fab packaging uses `fab-plugin-release-tools` at the commit recorded in
-`PackageForFab.ps1` (version `0.4.0`). The
+`PackageForFab.ps1` (version `0.5.0`). The
 product repository must be completely clean, and release output must be
 outside the product repository.
 
