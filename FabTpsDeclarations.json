@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "declarations": [
+    {
+      "software_name": "Open Asset Import Library (assimp)",
+      "version": "6.0.5",
+      "vendor": "assimp team",
+      "homepage_url": "https://www.assimp.org/",
+      "source_repository_url": "https://github.com/assimp/assimp",
+      "source_tag": "v6.0.5",
+      "source_commit": "392a658f9c271be965271f45e7521a1b80ea4392",
+      "license": "BSD-3-Clause",
+      "license_url": "https://github.com/assimp/assimp/blob/v6.0.5/LICENSE",
+      "bundled": true,
+      "linkage": "dynamic",
+      "platforms": [
+        "Win64"
+      ],
+      "upstream_source_modified": false,
+      "sends_data_to_creator": false,
+      "distributed_notice_file": "Source/ThirdParty/assimp/assimp.tps",
+      "purpose": "Runtime static mesh import from files or in-memory data, including FBX, OBJ, glTF/GLB, and Collada (DAE), using the bundled Assimp library.",
+      "why_required": "The RuntimeAssetImport module uses Assimp to parse supported static 3D mesh formats at runtime in packaged Unreal Engine applications. The external assimp module supplies the Win64 import library and delay-loaded runtime DLL.",
+      "additional_information": "Assimp 6.0.5 is built as a shared library from the official v6.0.5 source tag with the COLLADA, FBX, GLTF, and OBJ importers enabled. The plugin ships the assimp-vc143-mt.dll runtime, import library, headers, and assimp.tps notice; the repository build metadata records the unchanged upstream source tree."
+    }
+  ]
+}
