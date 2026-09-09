@@ -20,9 +20,9 @@ namespace
     FString ResolveTextureTestAssetPath(const TCHAR *RelativePath)
     {
         const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("RuntimeAssetImport"));
-        return Plugin.IsValid()
-                   ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/RuntimeAssetImportTest/TestAssets"), RelativePath)
-                   : FString();
+        return Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(),
+                                                  TEXT("Source/RuntimeAssetImportTest/TestAssets"), RelativePath)
+                                : FString();
     }
 
     uint32 CalculatePngCrc32(const uint8 *Data, const int32 ByteCount)
