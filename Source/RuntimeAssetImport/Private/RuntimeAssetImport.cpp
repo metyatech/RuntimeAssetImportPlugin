@@ -19,8 +19,8 @@ void FRuntimeAssetImportModule::StartupModule()
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("RuntimeAssetImport"));
     if (Plugin.IsValid())
     {
-        CandidatePaths.Add(FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/ThirdParty/assimp/Bin/Win64"),
-                                           AssimpDllName));
+        CandidatePaths.Add(
+            FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source/ThirdParty/assimp/Bin/Win64"), AssimpDllName));
     }
     else
     {
@@ -50,10 +50,7 @@ FRuntimeAssetImportModule &FRuntimeAssetImportModule::Get()
     return FModuleManager::LoadModuleChecked<FRuntimeAssetImportModule>(TEXT("RuntimeAssetImport"));
 }
 
-bool FRuntimeAssetImportModule::IsAssimpAvailable() const
-{
-    return AssimpDllHandle != nullptr;
-}
+bool FRuntimeAssetImportModule::IsAssimpAvailable() const { return AssimpDllHandle != nullptr; }
 
 void FRuntimeAssetImportModule::ShutdownModule()
 {
